@@ -1,0 +1,168 @@
+﻿@namespace GUI.Client.Pages
+@page "/sheets"
+@using System.Diagnostics
+@using Microsoft.JSInterop
+@rendermode InteractiveServer
+@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Spreadsheet</PageTitle>
+
+
+<label>Selected Cell Name: </label><input @bind="SelectedCell" readonly />
+<label>Value: </label><input @bind="CurrentValueString" readonly />
+<label>Content: </label><input value="@CurrentContents" @ref="TextArea" @onchange="CellContentChanged" />
+
+<div class="modal-overlay" style="display: @(ShowError ? "block" : "none")">
+    <div class="modal-content centered-card text-center">
+        <span>@ErrorMessage</span>
+        <br />
+        <button class="btn btn-danger" @onclick="DismissError">OK</button>
+    </div>
+</div>
+
+<div>
+    <button class="btn btn-primary" @onclick="SaveFile">Save</button>
+    <button class="btn btn-primary" @onclick="ClearSpreadsheetData">Clear Cells</button>
+    <label>Load</label><InputFile type="file" OnChange="HandleFileChooser" />
+    
+</div>
+
+<div>
+    <div class="table-container">
+        <div class="scrollable">
+            <table class="table table-bordered">
+                <thead>
+                    <tr class="fixed-header">
+                        <th scope="col">&nbsp;</th>
+                        @for ( int col = 0; col < COLS; col++ )
+                        {
+                            <th scope="col">@Alphabet[col]</th>
+                        }
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @for ( int row = 0; row < ROWS; row++ )
+                    {
+                        <tr style="padding:0px !important;">
+                            <th style="padding:0px !important;" scope="row" class="fixed-column">@(row + 1)</th>
+                            @for ( int col = 0; col < COLS; col++ )
+                            {
+                                int r = row;
+                                int c = col;
+
+                                // Added variable to set the cell to random color when option is selected.
+                                var cellColor = isPartyMode ? GetRandomColor() : "white";
+
+                                <td @onclick="() => CellClicked(r,c)" style="padding:0px !important; background-color: @cellColor;">
+                                    <p class="spreadcell"> @CellsValueStore[r, c]  </p>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div>
+    <button class="btn btn-secondary" @onclick="PartyMode">Party Mode</button>
+</div>
+
+<style>
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .spreadcell {
+        width: 150px;
+        height: 40px;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .fixed-header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: #ffffff !important;
+    }
+
+    .fixed-column {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background-color: #ffffff !important;
+    }
+
+    .scrollable {
+        white-space: nowrap; /* Ensures no line breaks within cells */
+        width: 1000px;
+        height: 500px;
+        margin: -1px;
+    }
+</style>
+
+
+<script type="text/javascript">
+    function focusElement(id) {
+        console.log(`looking for: ${id}`);
+        var element = document.getElementById(id);
+        if (element) {
+            console.log(`focusing element: ${id} ${element}`)
+            element.focus();
+        }
+    }
+
+    window.addKeyPressListener = function (dotNetObject) {
+        console.log("registering key press event handler");
+        document.addEventListener('keydown', function (event) {
+            console.log(`got key: ${event.key}`);
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                event.preventDefault(); // Prevent arrow keys from scrolling
+            }
+            dotNetObject.invokeMethodAsync('HandleKeyPress', event.key);
+        });
+    };
+
+    function downloadFile(fileName, fileContent) {
+        console.log(`download file ${fileName}`);
+        // Create a blob with the file content
+        const blob = new Blob([fileContent], { type: "text/plain" });
+
+        // Create a link element
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+
+        // Append the anchor element to the body
+        document.body.appendChild(a);
+
+        // Click the link to trigger download
+        a.click();
+
+        // Remove the anchor element from the DOM
+        document.body.removeChild(a);
+    }
+
+</script>
