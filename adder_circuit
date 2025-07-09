@@ -1,0 +1,315 @@
+// 8-bit Ripple Carry Adder for Lab 2
+// ECE 3700
+// Hudson Dalby 
+// 10/6/24
+// Note: This file uses my 4-bit ripple carry adder, and extends it to 8-bit by using two ripple carry adders
+// With the same instantiation process as the 4-bit carry adder
+
+
+// Module for full adder: 
+	module full_adder_again(
+	input wire A, B, Cin, // Inputs A, B, and Carry in
+	output wire Sum, Cout // Sum and Carry out
+	);
+
+	// Logic gates for sum
+   assign Sum = (A ^ B) ^ Cin;	// ^ = xor 
+	
+	// Logic gates for Carry Out
+	assign Cout = (A & B) | ((A ^ B) & Cin); 
+
+	endmodule
+	
+	module ripple_carry_adder_again(
+   input wire [3:0] A, B,      // 4-bit inputs
+   input wire Cin,             // Carry input
+   output wire [3:0] Sum,      // 4-bit sum output
+   output wire Cout            // Carry output
+);
+
+    // Internal wires for the carry signals
+    wire C1, C2, C3;
+
+    // Instantiation of full adder for Sum[0]
+    full_adder_again FA0 (
+        .A(A[0]), 
+        .B(B[0]), 
+        .Cin(Cin), 
+        .Sum(Sum[0]), 
+        .Cout(C1)
+    );
+
+	 // Instantiation of full adder for Sum[1]
+    full_adder_again FA1 (
+        .A(A[1]), 
+        .B(B[1]), 
+        .Cin(C1), 
+        .Sum(Sum[1]), 
+        .Cout(C2)
+    );
+
+	 
+	 // Instantiation of full adder for Sum[2]
+    full_adder_again FA2 (
+        .A(A[2]), 
+        .B(B[2]), 
+        .Cin(C2), 
+        .Sum(Sum[2]), 
+        .Cout(C3)
+    );
+
+	 // Instantiation of full adder for Sum[3]
+    full_adder_again FA3 (
+        .A(A[3]), 
+        .B(B[3]), 
+        .Cin(C3), 
+        .Sum(Sum[3]), 
+        .Cout(Cout)
+    );
+	 
+	 endmodule
+	 
+	module eight_bit_ripple_carry_adder(
+    input wire [7:0] A, B,      // 8-bit inputs
+    input wire Cin,             // Carry input
+    output wire [7:0] Sum,      // 8-bit sum output
+    output wire Cout            // Carry output
+);
+
+    // Internal wires for carry outputs of the 4-bit adders
+    wire C4; // Carry output from the first 4-bit adder
+
+    // Instantiation of the first 4-bit adder
+    ripple_carry_adder_again rc_adder0(
+        .A(A[3:0]), 
+        .B(B[3:0]), 
+        .Cin(Cin), 
+        .Sum(Sum[3:0]), 
+        .Cout(C4)  // Carry out from the first 4-bit adder
+    );
+
+    // Instantiation of the second 4-bit adder
+    ripple_carry_adder rc_adder1 (
+        .A(A[7:4]), 
+        .B(B[7:4]), 
+        .Cin(C4),  // Carry in is the carry out from the first 4-bit adder
+        .Sum(Sum[7:4]), 
+        .Cout(Cout)  // Final carry out
+    );
+
+endmodule
+
+
+
+
+// Ripple Carry Adder for Lab 2
+// ECE 3700
+// Hudson Dalby 
+// 10/6/24
+
+
+// Module for full adder: 
+	module full_adder(
+	input wire A, B, Cin, // Inputs A, B, and Carry in
+	output wire Sum, Cout // Sum and Carry out
+	);
+
+	// Logic gates for sum
+   assign Sum = (A ^ B) ^ Cin;	// ^ = xor 
+	
+	// Logic gates for Carry Out
+	assign Cout = (A & B) | ((A ^ B) & Cin); 
+
+	endmodule
+	
+	module ripple_carry_adder(
+   input wire [3:0] A, B,      // 4-bit inputs
+   input wire Cin,             // Carry input
+   output wire [3:0] Sum,      // 4-bit sum output
+   output wire Cout            // Carry output
+);
+
+    // Internal wires for the carry signals
+    wire C1, C2, C3;
+
+    // Instantiation of full adder for Sum[0]
+    full_adder FA0 (
+        .A(A[0]), 
+        .B(B[0]), 
+        .Cin(Cin), 
+        .Sum(Sum[0]), 
+        .Cout(C1)
+    );
+
+	 // Instantiation of full adder for Sum[1]
+    full_adder FA1 (
+        .A(A[1]), 
+        .B(B[1]), 
+        .Cin(C1), 
+        .Sum(Sum[1]), 
+        .Cout(C2)
+    );
+
+	 
+	 // Instantiation of full adder for Sum[2]
+    full_adder FA2 (
+        .A(A[2]), 
+        .B(B[2]), 
+        .Cin(C2), 
+        .Sum(Sum[2]), 
+        .Cout(C3)
+    );
+
+	 // Instantiation of full adder for Sum[3]
+    full_adder FA3 (
+        .A(A[3]), 
+        .B(B[3]), 
+        .Cin(C3), 
+        .Sum(Sum[3]), 
+        .Cout(Cout)
+    );
+
+endmodule
+
+
+// Look-Ahead Adder (4-bit)
+// Hudson Dalby
+// 10/6/24
+
+module lookahead_adder(
+    input wire [3:0] A,      // 4-bit input A
+    input wire [3:0] B,      // 4-bit input B
+    input wire Cin,          // Carry input
+    output wire [3:0] Sum,   // 4-bit sum output
+    output wire Cout         // Carry output
+);
+
+    // Generate wires
+    wire [3:0] Prop, Gen; // Propagate and Generate signals
+    wire [4:0] Carry; // Carry signals
+
+	 // Propagate is defined as A xor B
+    assign Prop = A ^ B;             
+	 // Generate is defined as A and B
+    assign Gen = A & B;           
+             
+
+    // Carry logic for each adder
+	 // Carry is defined as follows:
+	 // Carryx+1 = Genx or(Carryx and Propx)
+	 assign Carry[0] = Cin;
+    assign Carry[1] = Gen[0] | (Prop[0] & Carry[0]); // C1
+    assign Carry[2] = Gen[1] | (Prop[1] & Carry[1]); // C2
+    assign Carry[3] = Gen[2] | (Prop[2] & Carry[2]); // C3
+    assign Carry[4] = Gen[3] | (Prop[3] & Carry[3]); // C4 (final carry out)
+
+    // Sum taken by computing Propagate xor Generate
+    assign Sum = Prop ^ Carry; // Sum calculation
+
+    // Carry out
+    assign Cout = Carry[4]; // Final carry out
+
+endmodule
+
+
+// Testbench for Look-Ahead Adder (4-bit)
+// Hudson Dalby
+// 10/6/24
+
+module tb_Lookahead_Adder;
+
+    // Testbench signals
+    reg [3:0] A, B;            // 4-bit inputs
+    reg Cin;                    // Carry-in
+    wire [3:0] Sum;             // 4-bit sum output
+    wire Cout;                  // Carry-out
+
+    // Instantiate the DUT (Device Under Test)
+    lookahead_adder uut (
+        .A(A),
+        .B(B),
+        .Cin(Cin),
+        .Sum(Sum),
+        .Cout(Cout)
+    );
+
+    integer i, j, k; // Loop variables
+
+    initial begin
+        
+        // Loop over all possible values of 4-bit input A from 0000 (0) to 1111 (15)
+        for (i = 0; i < 16; i = i + 1) begin
+				// Loop over all possible values of 4-bit input B from 0000 (0) to 1111 (15)
+            for (j = 0; j < 16; j = j + 1) begin
+					// Loop over carry in of 0 and 1
+					for (k = 0; k < 2; k = k + 1) begin
+                
+					 // Set each value to loop variable
+					 A = i;
+					 B = j; 
+					 Cin = k;
+					 
+					 #1;  // Wait for 1 time unit
+					 $display("Time = %0t : A = %b, B = %b, Cin = %b | Sum = %b, Cout = %b", $time, A, B, Cin, Sum, Cout);
+
+					end
+				end
+			end
+
+        // Finish the simulation
+        $finish;
+    end
+
+endmodule
+
+
+// Testbench for Ripple Carry Adder
+// ECE 3700
+// Hudson Dalby 
+// 10/6/24
+
+module tb_Ripple_Carry_Adder;
+
+    // Testbench signals
+    reg [3:0] A, B;            // 4-bit inputs
+    reg Cin;                    // Carry-in
+    wire [3:0] Sum;             // 4-bit sum output
+    wire Cout;                  // Carry-out
+
+    // Instantiate the DUT (Device Under Test)
+    ripple_carry_adder uut (
+        .A(A),
+        .B(B),
+        .Cin(Cin),
+        .Sum(Sum),
+        .Cout(Cout)
+    );
+
+    integer i, j, k; // Loop variables
+
+    initial begin
+        
+        // Loop over all possible values of 4-bit input A from 0000 (0) to 1111 (15)
+        for (i = 0; i < 16; i = i + 1) begin
+				// Loop over all possible values of 4-bit input B from 0000 (0) to 1111 (15)
+            for (j = 0; j < 16; j = j + 1) begin
+					// Loop over carry in of 0 and 1
+					for (k = 0; k < 2; k = k + 1) begin
+                
+					 // Set each value to loop variable
+					 A = i;
+					 B = j; 
+					 Cin = k;
+					 
+					 #1;  // Wait for 1 time unit
+					 $display("Time = %0t : A = %b, B = %b, Cin = %b | Sum = %b, Cout = %b", $time, A, B, Cin, Sum, Cout);
+
+					end
+				end
+			end
+
+        // Finish the simulation
+        $finish;
+    end
+
+endmodule
