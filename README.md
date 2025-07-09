@@ -8,7 +8,7 @@ CS 4400 - Computer Systems
 - Implementation of synchronized programs using concurrent and parallel programming techniques.
 - Utilization of networking and operating system aspects to create communicating applications.
 
-Related Project Files:  (C, Red Hat Enterprise Linux)
+Related Project Files (C, Red Hat Enterprise Linux):
 - processor_simulator
 - performance_optimization
 - shell_simulation
@@ -21,7 +21,7 @@ CS 3810 - Computer Organization
 - Focus on performance measures and compilation issues.
 - Compilation and translation of abstraction into machine-level assembly code.
 
-Related Project Files:  (MIPS Assembly)
+Related Project Files (MIPS Assembly):
 - fibonacci_sequence_asm
 - data_compression_asm
 - word_counter_asm
@@ -33,7 +33,7 @@ CS 3700 - Fundamentals of Digital System Design
 - Design with Intel Quartus and field programmable gate arrays for project implementation.
 - Digital circuit representation and implementation through finite state machine modeling.
 
-Related Project Files:  (Verilog, Intel Quartus Prime)
+Related Project Files (Verilog, Intel Quartus Prime):
 - two_bit_computer
 - adder_circuit
 - comparator_circuit
@@ -48,7 +48,7 @@ CS 3505 - Software Practice II
 - Utilization of aspects of software-development tool chain such as version control, continuous integration, and test suites.
 - Team collaboration on projects throughout the course.
 
-Related Project Files: (C++, Qt) 
+Related Project Files (C++, Qt):
 - Trie
 - Sprite Editor
 - Simon Game
@@ -60,7 +60,7 @@ CS 3500 - Software Practice
 - Good practice in software engineering through documentation, source code management, and object-oriented analysis.
 - Use of software tools such as debuggers, profilers, and source code repositories.
 
-Related Project Files: (C++, ASP.NET Razor, SQL)
+Related Project Files (C++, ASP.NET Razor, SQL):
 - Snake
 - Spreadsheet
 _____________________________________________________________________________________________________________________________________________________________
