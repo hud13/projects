@@ -1,0 +1,115 @@
+/*
+ *  Code to be used on MIPS assembly simulation software
+ *  Program that displays the compression ratio of a user input using Huffman coding principles
+ *
+ *  Author: Hudson Dalby
+ *  Date: 2/15/24
+ */
+
+.data 
+newline: .asciiz "\n"
+prompt: .asciiz "Provide an input string with less than 50 characters and only containing a-z or A-Z"
+error: .asciiz "\nInvalid Input"
+compressText: .asciiz "\nThe compression ratio is: "
+
+buffer:	.space 51			# Allocates 50 bytes + 1 null for input in $a0
+
+.text					# Start of the word counter instructions
+.globl main
+
+main: 		#Prompt the user to enter a string and check if each character is valid
+
+print_prompt:	li $v0, 4		# syscall 4 = write string
+		la $a0, prompt		# loads the prompt from data 
+		syscall			# output the initial prompt
+		
+print_new_line: li $v0, 4		# syscall 4 = print string
+		la $a0, newline		# loads the prompt from data 
+		syscall			# output the initial prompt
+				
+read_input:	li $v0, 8		# syscall 8 = read string
+		la $a0, buffer		# loads address of input buffer
+		li $a1, 51		# sets maximum number of characters to read to 50 + 1 null
+		syscall			# reads the input from the user
+		
+		move $s0, $a0		# $s0 = first pointer (to determine if all letters are valid)
+		move $s1, $a0		# $s1 = second pointer (to convert input to compressed version)
+		
+		li $s7, 0		# Initializes a character count for no. of characters in initial input
+		
+loop:		lbu $s3, 0($s0) 	# Loads current char to be looked at
+		beqz $s3, convert	# Checks for the null character, jumps to output if found
+		beq $s3, 10, convert	# Considers ASCII value 10 as unused space
+		
+		blt $s3, 65, badInput	# If t1 ASCII is less than 65 (A), go to badInput condition
+		bgt $s3, 122, badInput	# If t1 ASCII is greater than 122 (z), go to badInput condition
+	
+		ble $s3, 90, letter	# Go to letter label since char is uppercase letter
+		bge $s3, 97, letter	# Go to letter label since char is lowercase letter
+		
+letter:		addi $s7, $s7, 1	# Increases the character count by 1
+		addi $s0, $s0, 1	# Increments the pointer by 1
+		j loop 
+
+badInput: 	li $v0, 4		# Syscall 4 = print string
+		la $a0, error		# loads the error string from data
+		syscall			# Prints the invalid input text
+		j end			# jumps to end of program			
+							
+		# Compress the initial input by the user					
+				
+convert: 	bgt $s7, 50, badInput	# Jumps to the bad input if 50 characters are entered
+		beq $s7, 0, badInput	# Jumps to bad input if no characters are entered
+		
+		li $s6, 0		# count for number of chars in compressed entry
+		li $t0, 1		# Counter for number of same char in current sequence
+		lbu $s3, 0($s1)		# loads the current char from second pointer. 
+		
+loop2:		lbu $s3, 0($s1)		# loads the current char from copy pointer. 
+		lbu $t1, 1($s1)		# loads the next char from copy pointer.
+		beq $s1, $s0, ratio	# Ends once all characters have been accounted for
+		
+		beq $t1, $s3, sameChar	# If characters are same, go to same character label
+		j printChar		# If characters are different, print the current char
+		
+sameChar:	addi $t0, $t0, 1	# increments the counter by 1
+		addi $s1, $s1, 1	# Moves the copy of original input pointer
+		beq  $t0, 9, printChar	# If more than 9 consecutive characters, go to print
+		j loop2			# Goes back to start of loop
+		
+printInt:	li $v0, 1		# Syscall 1 = print int
+		la $a0, ($t0)		# loads the output string from data
+		syscall			# Prints the word count text 
+		addi $s6, $s6, 1	# Increases counter for compressed length. 
+		la $t0, 1		# Resets same char count
+		addi $s1, $s1, 1	# Increments pointer
+		j loop2
+		
+printChar:	li $v0, 11		# Syscall 11 = print char
+		la $a0, ($s3)		# Loads current char 
+		syscall 		# Prints current char
+		addi $s6, $s6, 1	# Increases counter for compressed length.
+		bge $t0, 2, printInt	# If at least 2 consecutive chars, print the count after
+		addi $s1, $s1, 1	# Moves the copy input pointer by 1
+		j loop2
+
+		# Calculate the compression ratio (Original input / Compressed input)
+		
+ratio:		mtc1 $s7, $f0		# Moves the int values to coregister
+		mtc1 $s6, $f1
+
+		cvt.s.w $f0, $f0	# Converts the float to printable value
+		cvt.s.w $f1, $f1
+
+		div.s $f12, $f0, $f1	# calculates the compression value 
+
+		li $v0, 4		# syscall 4 = write string
+		la $a0, compressText	# loads the prompt from data 
+		syscall			# output the initial prompt
+		
+		li $v0, 2		# syscall 2 = print float
+		syscall			# prints the compression ratio
+
+
+end:		li $v0, 10		# syscall 10 = exit the program
+		syscall			# ends the program
