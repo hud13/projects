@@ -1,0 +1,174 @@
+
+﻿using CS3500.Networking;
+using MySql.Data.MySqlClient;
+using System.Collections;
+using System.Text;
+
+namespace WebServer
+{
+    public static class WebServer
+    {
+        private const string connectionString = *Removed for privacy*
+
+        /// <summary>
+        /// ArrayList that will keep track of all game IDs.
+        /// </summary>
+        private static ArrayList gID = new ArrayList();
+
+        // Int that will determine the specific gameID clicked.
+        private static int gIDNum = 0;
+
+        public static void Main(string[] args)
+        {
+            Server.StartServer(HandleHttpConnection, 80);
+
+            Console.Read(); // prevent main from returning.
+        }
+
+        private static void HandleHttpConnection(NetworkConnection client)
+        {
+            string request = client.ReadLine();
+            Console.WriteLine(request);
+
+            if (request.Contains("GET / "))
+            {
+                string homePage = "<html>\r\n  " +
+                    "<h3>Welcome to the Snake Games Database!</h3>\r\n " +
+                    " <a href=\"/games\">View Games</a>\r\n</html>";
+
+                string httpOkHeader = "HTTP/1.1 200 OK\r\n" +
+            "Connection: close\r\n" +
+            "Content-Type: text/html; charset=UTF-8\r\n" +
+            $"Content-Length: {Encoding.UTF8.GetByteCount(homePage)}\r\n" +
+            "\r\n";
+
+                client.Send(httpOkHeader + homePage);
+            }
+            else if (request.Contains("GET /games "))
+            {
+                string response = "<html>";
+
+                response += "<table border = 1>";
+                response += "<thead>";
+                response += "<tr><td>ID</td><td>Start</td><td>End</td></tr>";
+                response += "</thead>";
+                response += "<tbody>";
+
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    try
+                    {
+                        // Open a connection
+                        conn.Open();
+
+                        // Create a command
+                        MySqlCommand command = conn.CreateCommand();
+                        command.CommandText = "SELECT ID, Start, End FROM Games";
+
+                        // Execute the command and cycle through the DataReader object
+                        using (MySqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                response += "<tr>";
+                                response += "<td><a href=\"/games?gid=" + reader["ID"] + "\">" + reader["ID"] + "</a></td>";
+                                response += "<td>" + reader["Start"] + "</td>";
+                                response += "<td>" + reader["End"] + "</td>";
+                                response += "</tr>";
+
+                                //Add each game ID to our ArrayList of Game ID's to check gID page.
+                                gID.Add(reader["ID"]);
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                }
+
+                response += "</tbody>";
+                response += "</table>";
+                response += "</html>";
+
+                string httpOkHeader = "HTTP/1.1 200 OK\r\n" +
+                "Connection: close\r\n" +
+                "Content-Type: text/html; charset=UTF-8\r\n" +
+                $"Content-Length: {Encoding.UTF8.GetByteCount(response)}\r\n" +
+                "\r\n";
+
+                client.Send(httpOkHeader + response);
+            }
+
+            //Extract the specific game ID.
+            for (int i = 0; i < gID.Count; i++)
+            {
+                if (request.Contains($"GET /games?gid={gID[i]} "))
+                {
+                    gIDNum = (int)gID[i];
+                }
+            }
+
+            if (request.Contains($"GET /games?gid={gIDNum} "))
+            {
+                string response = "<html>";
+
+                response += $"<h3> Stats for Game {gIDNum} </h3>";
+                response += "<table border = 1>";
+                response += "<thead>";
+                response += "<tr>";
+                response += "<td>Player ID</td><td>Player Name</td><td>Max Score</td><td>Enter Time</td><td>Leave Time</td>";
+                response += "</tr>";
+                response += "</thead>";
+
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    try
+                    {
+                        // Open a connection
+                        conn.Open();
+
+                        // Create a command
+                        MySqlCommand command = conn.CreateCommand();
+                        command.CommandText = "SELECT SnakeID, pID, MaxScore, Enter, `Leave` FROM Players WHERE @GameID = GameID";
+                        command.Parameters.AddWithValue("@GameID", gIDNum);
+
+                        // Execute the command and cycle through the DataReader object
+                        using (MySqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                response += "<tbody>";
+                                response += "<tr>";
+                                response += "<td>" + reader["SnakeID"] + "</td>" +
+                                    "<td>" + reader["pID"] + "</td>" +
+                                    "<td>" + reader["MaxScore"] + "</td>" +
+                                    "<td>" + reader["Enter"] + "</td>" +
+                                    "<td>" + reader["Leave"] + "</td>";
+                                response += "</tr>";
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                }
+
+                response += "</tbody>";
+                response += "</table>";
+                response += "</html>";
+
+                string httpOkHeader = "HTTP/1.1 200 OK\r\n" +
+                "Connection: close\r\n" +
+                "Content-Type: text/html; charset=UTF-8\r\n" +
+                $"Content-Length: {Encoding.UTF8.GetByteCount(response)}\r\n" +
+                "\r\n";
+
+                client.Send(httpOkHeader + response);
+            }
+        }
+
+    }
+
+}
