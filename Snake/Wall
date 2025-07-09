@@ -1,0 +1,63 @@
+
+﻿// <Summary>
+// This class represents a wall object to be used in
+// the snake game created for PS9. 
+// </Summary
+// Note: Field descriptions provided by Prof. Kopta in PS9 specifications.
+// <Author>
+// Ian Weller & Hudson Dalby
+// </Author>
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace GUI.Client.Models
+{
+    /// <summary>
+    /// Class representation of a Wall object
+    /// Contains fields related to the Model. 
+    /// </summary>
+    public class Wall
+    {
+        /// <summary>
+        /// an int representing the wall's unique ID.
+        /// </summary>
+        [JsonPropertyName("wall")]
+        [JsonInclude]
+        public int wall { get; private set; }
+
+        /// <summary>
+        /// a Point2D object representing one endpoint of the wall
+        /// </summary>
+        [JsonPropertyName("p1")]
+        [JsonInclude]
+        public Point2D p1 { get; private set; }
+
+        /// <summary>
+        /// a Point2D representing the other endpoint of the wall.
+        /// </summary>
+        [JsonPropertyName("p2")]
+        [JsonInclude]
+        public Point2D p2 { get; private set; }
+
+        /// <summary>
+        /// Default constructor for a wall object
+        /// </summary>
+        public Wall()
+        {
+            p1 = new Point2D();
+            p2 = new Point2D();
+        }
+
+        /// <summary>
+        /// a constructor that creates an object from a deserialized json string. 
+        /// </summary>
+        [JsonConstructor]
+        public Wall(int Wall, Point2D P1, Point2D P2)
+        {
+            wall = Wall;
+            p1 = P1;
+            p2 = P2;
+        }
+    }
+}
