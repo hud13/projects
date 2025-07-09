@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/sounds">
+        <file>levelPass.mp3</file>
+        <file>fail.mp3</file>
+        <file>buttonClick.mp3</file>
+    </qresource>
+</RCC>
