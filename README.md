@@ -14,6 +14,7 @@ Related Project Files:  (C, Red Hat Enterprise Linux)
 - memory_allocator
 
 
+
 CS 3810 - Computer Organization
 - RISC and CISC instruction set architectures and CPU organizations.
 - Caching, parallel machines, pipelining, and input/output.
@@ -24,6 +25,7 @@ Related Project Files:  (MIPS Assembly)
 - fibonacci_sequence_asm
 - data_compression_asm
 - word_counter_asm
+
 
 
 CS 3700 - Fundamentals of Digital System Design
@@ -40,6 +42,7 @@ Related Project Files:  (Verilog, Intel Quartus Prime)
 - simple_computer
 
 
+
 CS 3505 - Software Practice II
 - Focus on traditional software development using Model-View-Control architecture.
 - Process of agile and waterfall software development in a team setting. 
@@ -50,6 +53,7 @@ Related Project Files: (C++, Qt)
 - Trie
 - Sprite Editor
 - Simon Game
+
 
 
 CS 3500 - Software Practice
