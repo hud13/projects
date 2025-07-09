@@ -1,0 +1,659 @@
+/*
+ *   mm.c - malloc package implementation
+ *
+ *   An improved Allocator that takes handout code and implements the following features:
+ * - 8-byte header & footer
+ * - Coalescing and splitting
+ * - Explicit free list
+ * - Smart page chunk mapping
+ * - Unmap unused page chunks
+ * - Heap consistency check (old version)
+ *
+ *   Author: Hudson Dalby
+ *   Date: 4/18/2024
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <unistd.h>
+#include <string.h>
+
+#include "mm.h"
+#include "memlib.h"
+
+/* always use 16-byte alignment */
+#define ALIGNMENT 16
+
+/*Sets maximum blocksize for doubling page size allocation */
+#define MAXSIZE (1 << 19)
+
+/* rounds up to the nearest multiple of ALIGNMENT */
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
+
+/* rounds up to the nearest multiple of mem_pagesize() */
+#define PAGE_ALIGN(size) (((size) + (mem_pagesize() - 1)) & ~(mem_pagesize() - 1))
+
+// Recommended macros:
+
+// This assumes you have a struct or typedef called "block_header" and "block_footer"
+#define OVERHEAD (sizeof(block_header) + sizeof(block_footer))
+
+// Given a payload pointer, get the header or footer pointer
+#define HDRP(bp) ((char *)(bp) - sizeof(block_header))
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - OVERHEAD)
+
+// Given a payload pointer, get the next or previous payload pointer
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - OVERHEAD))
+
+// Given a pointer to a header, get or set its value
+#define GET(p) (*(size_t *)(p))
+#define PUT(p, val) (*(size_t *)(p) = (val))
+
+// Combine a size and alloc bit
+#define PACK(size, alloc) ((size) | (alloc))
+
+// Given a header pointer, get the alloc or size
+#define GET_ALLOC(p) (GET(p) & 0x1)
+#define GET_SIZE(p) (GET(p) & ~0xF)
+
+// *******************************************************************************
+// Additional macros/definitions for block management:
+
+// Header and footer for a block, size_t is already 8-bytes
+typedef size_t block_header;
+typedef size_t block_footer;
+
+// Multiplying factor for page size allocation
+static size_t page_size_multiplier = 0;
+
+// Pointer for last searched pointer
+// static void *next_fit_pointer = NULL;
+
+// Define an explicit free list
+static void *explicit_free_list = NULL;
+
+// Minimum size for a free block to store: header, footer, next and previous pointers
+#define MIN_FREE_BLOCK_SIZE (sizeof(block_header) + sizeof(block_footer) + 2 * sizeof(void *))
+
+// Pointer to the next and previous free blocks in the explicit free list
+#define NEXT_FREE(bp) (*((void **)(bp)))
+#define PREV_FREE(bp) (*((void **)(bp) + 1))
+
+// Set the next and previous free pointers in the explicit free list
+#define SET_NEXT_FREE(bp, next) (NEXT_FREE(bp) = (next))
+#define SET_PREV_FREE(bp, prev) (PREV_FREE(bp) = (prev))
+
+// Aligns a pointer to the next 16-byte boundary
+#define ALIGN_PTR(p) ((void *)ALIGN((size_t)(p)))
+
+// Gets the allocation bit of the next and previous blocks
+#define NEXT_ALLOC(bp) (GET_ALLOC(HDRP(NEXT_BLKP(bp))))
+#define PREV_ALLOC(bp) (GET_ALLOC(HDRP(PREV_BLKP(bp))))
+
+// Check the allocation state of the current block
+#define IS_ALLOCATED(bp) (GET_ALLOC(HDRP(bp)))
+#define IS_FREE(bp) (!GET_ALLOC(HDRP(bp)))
+
+// Check the allocation state of the previous block.
+#define IS_PREV_ALLOCATED(bp) (PREV_ALLOC(bp))
+#define IS_PREV_FREE(bp) (!PREV_ALLOC(bp))
+
+// Check the allocation state of the next block.
+#define IS_NEXT_ALLOCATED(bp) (NEXT_ALLOC(bp))
+#define IS_NEXT_FREE(bp) (!NEXT_ALLOC(bp))
+
+// Function forward declarations
+static inline void *coalesce(void *bp);
+
+// Check variables and declarations
+int heap_contains(void *p);
+int free_list_contains(void *p);
+
+void *heap_start = NULL; // Pointer to the start of the heap
+
+// list-node structure for heap check
+typedef struct heap_node
+{
+  struct heap_node *next;
+  int size;
+} heap_node;
+
+// List of chunks to track allocated memory chunks for check function
+static heap_node *chunk_list = NULL;
+
+/*
+ * Function to add a block to the explicit free list.
+ * It updates the next and previous pointers accordingly.
+ */
+static inline void remove_from_free_list(void *bp)
+{
+
+  // Get pointers to the previous and next free blocks
+  void *prev = PREV_FREE(bp);
+  void *next = NEXT_FREE(bp);
+
+  // If the previous block exists, update its next pointer
+  if (prev != NULL)
+  {
+    SET_NEXT_FREE(prev, next);
+  }
+  else
+  {
+    // If there is no previous block, this is the head of the free list
+    explicit_free_list = next;
+  }
+
+  // If the next block exists, update its previous pointer
+  if (next != NULL)
+  {
+    SET_PREV_FREE(next, prev);
+  }
+
+  // Clears the pointers to avoid dangling pointers
+  SET_NEXT_FREE(bp, NULL);
+  SET_PREV_FREE(bp, NULL);
+}
+
+/*
+ * Function to add a block to the explicit free list.
+ * It updates the next and previous pointers accordingly.
+ */
+static inline void add_to_free_list(void *bp)
+{
+
+  // Set the pointer to the current head of the free list, no previous by default
+  SET_NEXT_FREE(bp, explicit_free_list);
+  SET_PREV_FREE(bp, NULL);
+
+  // If the free list is not empty, set the previous head's previous pointer to this block
+  if (explicit_free_list != NULL)
+  {
+    SET_PREV_FREE(explicit_free_list, bp);
+  }
+
+  // Update the head of the free list to this block
+  explicit_free_list = bp;
+}
+
+// ******Recommended helper functions******
+
+/*
+ * Set a block to allocated
+ * Update block headers/footers as needed
+ * Update free list if applicable
+ * Split block if applicable
+ *
+ * Assumes the size includes the overhead and is 16-byte aligned
+ */
+static inline void set_allocated(void *b, size_t size)
+{
+
+  // Gets the size of the block to be allocated
+  size_t block_size = GET_SIZE(HDRP(b));
+
+  // Removes the block from the free list
+  remove_from_free_list(b);
+
+  // Gets remaining space
+  size_t leftover_size = block_size - size;
+
+  // Check if there is enough space to split the block
+  if (leftover_size >= MIN_FREE_BLOCK_SIZE)
+  {
+    // Sets the header and footer of the allocated block
+    PUT(HDRP(b), PACK(size, 1));
+    PUT(FTRP(b), PACK(size, 1));
+
+    // Sets the newly split free block
+    void *next_block = (char *)(b) + size;
+    PUT(HDRP(next_block), PACK(leftover_size, 0));
+    PUT(FTRP(next_block), PACK(leftover_size, 0));
+
+    // Add the new block to the free list
+    add_to_free_list(next_block);
+  }
+  // Block is not big enough to be split
+  else
+  {
+    // Sets the header and footer of the allocated block
+    PUT(HDRP(b), PACK(block_size, 1));
+    PUT(FTRP(b), PACK(block_size, 1));
+  }
+}
+
+/*
+ * Request more memory by calling mem_map
+ * Initialize the new chunk of memory as applicable
+ * Update free list if applicable
+ */
+static void *extend(size_t s)
+{
+
+  // If initial request, start with a page size
+  if (page_size_multiplier == 0)
+  {
+    page_size_multiplier = mem_pagesize();
+  }
+
+  // Multiplier values and Max values were tested for performance
+  // Doubling the page size should make sense but it kills throughput
+  while (page_size_multiplier < s + OVERHEAD)
+  {
+    page_size_multiplier *= 80;
+  }
+  if (page_size_multiplier > MAXSIZE)
+  {
+    page_size_multiplier = MAXSIZE; // Ensure at least the requested size
+  }
+
+  void *bp = mem_map(page_size_multiplier);
+  if (bp == NULL)
+  {
+    return NULL; // Allocation failed
+  }
+
+  // Initialize the new chunk tracking data
+  heap_node *new_chunk = (heap_node *)bp;
+  new_chunk->next = chunk_list;
+  new_chunk->size = page_size_multiplier;
+  heap_start = bp;
+
+  // Align the payload pointer to the start of the new block
+  void *block_payload = ALIGN_PTR((char *)bp + sizeof(heap_node));
+  void *block_header = (char *)block_payload - sizeof(block_header);
+
+  // calculate the size of the block
+  size_t block_size = page_size_multiplier - ((intptr_t)block_payload - (intptr_t)bp);
+
+  // Manually the header and footer for the new block
+  PUT(block_header, PACK(block_size, 0));
+  PUT((char *)block_header + block_size - sizeof(block_footer), PACK(block_size, 0));
+
+  // Set the next and previous pointers and add to free list
+  SET_NEXT_FREE(block_payload, NULL);
+  SET_PREV_FREE(block_payload, NULL);
+  add_to_free_list(block_payload);
+
+  // Set a new terminator
+  void *terminator = (char *)block_header + block_size;
+  PUT(terminator, PACK(0, 1)); // Terminator block
+
+  // Returns the payload pointer of the newly allocated chunk
+  return block_payload;
+}
+
+/*
+ * Attempts to unmap a chunk of memory if it is empty
+ * Checks if the passed block pointer is within the bounds of any chunk in the chunk list
+ */
+static void unmap_chunk(void *bp)
+{
+
+  // Gets the current chunk header from the list
+  heap_node **chunk = &chunk_list;
+
+  // While list has remaining chunks
+  while (*chunk != NULL)
+  {
+
+    // Gets the current chunk node reference, and pointers to start and end of the chunk
+    heap_node *current = *chunk;
+    void *chunk_start = (void *)(current);
+    void *chunk_end = (char *)(current) + current->size;
+
+    // Check if the block pointer is within the bounds of the current chunk
+    if ((char *)bp >= (char *)chunk_start && (char *)bp < (char *)chunk_end)
+    {
+
+      // Align the pointer to the start of the chunk and get the size data
+      void *aligned_chunk = ALIGN_PTR((char *)chunk_start + sizeof(heap_node));
+      size_t chunk_data = GET_SIZE(HDRP(aligned_chunk));
+
+      // Gets the original size of the created chunk
+      size_t chunk_initial = current->size - ((char *)aligned_chunk - (char *)chunk_start);
+
+      // If sizes are equal, the chunk is empty and can be unmapped safely
+      if (!IS_ALLOCATED(aligned_chunk) && chunk_data == chunk_initial)
+      {
+        remove_from_free_list(aligned_chunk);
+        mem_unmap(chunk_start, current->size);
+
+        // Removes the chunk from the list
+        *chunk = current->next;
+        return;
+      }
+    }
+    // Move to the next chunk in the list
+    chunk = &((*chunk)->next);
+  }
+}
+
+/*
+ * Coalesce a free block if applicable
+ * Returns pointer to new coalesced block
+ * Four cases for coalescing:
+ *  No neighbors free, previous neighbor free, next neighbor free, both free
+ */
+static inline void *coalesce(void *bp)
+{
+
+  // Gets the previous and next block headers
+  void *prev_bp = PREV_BLKP(bp);
+  void *next_bp = NEXT_BLKP(bp);
+
+  // Get the allocation status of the previous and next blocks
+  size_t prev_alloc = IS_PREV_ALLOCATED(bp);
+  size_t next_alloc = IS_NEXT_ALLOCATED(bp);
+
+  // Do not coalesce if the previous block is empty or if the current block is at the start of the heap
+  if (GET_SIZE(HDRP(prev_bp)) == 0 || (char *)prev_bp == (char *)bp)
+  {
+    prev_alloc = 1;
+  }
+
+  // Do not coalesce the terminator or empty block
+  if (GET_SIZE(HDRP(next_bp)) == 0)
+  {
+    next_alloc = 1;
+  }
+
+  // Get the size of the current block
+  size_t current_size = GET_SIZE(HDRP(bp));
+
+  // Both neighbors are free, coalesce with both
+  if (!prev_alloc && !next_alloc)
+  {
+
+    // update the size of the current block to include both neighbors
+    size_t new_size = current_size + GET_SIZE(HDRP(prev_bp)) + GET_SIZE(HDRP(next_bp));
+
+    // remove the previous and next blocks from the free list
+    remove_from_free_list(prev_bp);
+    remove_from_free_list(next_bp);
+
+    // Set the new header and footer for the coalesced block
+    PUT(HDRP(prev_bp), PACK(new_size, 0));
+    PUT(FTRP(prev_bp), PACK(new_size, 0));
+
+    bp = prev_bp; // Update bp to point to the new coalesced block
+  }
+
+  // Previous block is free, coalesce with previous
+  else if (!prev_alloc && next_alloc)
+  {
+    size_t new_size = current_size + GET_SIZE(HDRP(prev_bp));
+
+    // remove the previous block from the free list
+    remove_from_free_list(prev_bp);
+
+    // Set the new header and footer for the coalesced block
+    PUT(HDRP(prev_bp), PACK(new_size, 0));
+    PUT(FTRP(prev_bp), PACK(new_size, 0));
+
+    bp = prev_bp; // Update bp to point to the new coalesced block
+  }
+
+  // Next block is free, coalesce with next
+  else if (prev_alloc && !next_alloc)
+  {
+    size_t new_size = current_size + GET_SIZE(HDRP(next_bp));
+
+    // remove the next block from the free list
+    remove_from_free_list(next_bp);
+
+    // Set the new header and footer for the coalesced block
+    PUT(HDRP(bp), PACK(new_size, 0));
+    PUT(FTRP(bp), PACK(new_size, 0));
+  }
+
+  // If no neigbors are free, do nothing
+
+  // Add the block back to the free list
+  add_to_free_list(bp);
+
+  // next_fit_pointer = bp; // Update next fit pointer to the coalesced block
+
+  return bp;
+}
+
+/*
+ * mm_init - initialize the malloc package.
+ */
+int mm_init(void)
+{
+  explicit_free_list = NULL; // Initialize the explicit free list
+  page_size_multiplier = 0;  // Reset the page size multiplier
+  chunk_list = NULL;         // Reset the chunk list
+
+  // Initialize the heap start pointer and call extend
+  size_t initial_size = mem_pagesize();
+  void *initial_chunk = extend(initial_size);
+  if (initial_chunk == NULL)
+  {
+    return -1; // Allocation failed
+  }
+
+  // next_fit_pointer = initial_chunk; // Initialize next fit pointer to the free block
+
+  return 0;
+}
+
+/*
+ * mm_malloc - Allocate a block by using bytes from current_avail,
+ *     grabbing a new page if necessary.
+ */
+void *mm_malloc(size_t size)
+{
+
+  if (size <= 0)
+  {
+    return NULL; // No allocation for non-positive sizes
+  }
+
+  // Adjusts the size for alignment
+  size_t newsize = ALIGN(size + OVERHEAD);
+
+  // Iterates through the explicit free list to find a suitable block
+  void *block = explicit_free_list;
+  while (block != NULL)
+  {
+
+    size_t block_size = GET_SIZE(HDRP(block));
+
+    // Checks if block is large enough
+    if (block_size >= newsize)
+    {
+      set_allocated(block, newsize);
+
+      // return payload pointer
+      return block;
+    }
+    // Move to the next block in the free list
+    block = NEXT_FREE(block);
+  }
+
+  // No block found, get more space, set pointer to new block
+  block = extend(newsize);
+  if (block == NULL)
+  {
+    return NULL; // Allocation failed
+  }
+
+  // Set the block as allocated
+  set_allocated(block, newsize);
+
+  // set_allocated(block, newsize);
+  return block;
+}
+/*
+ * mm_free - Freeing a block does nothing.
+ */
+void mm_free(void *ptr)
+{
+  if (ptr == NULL)
+  {
+    return; // No action for NULL pointers
+  }
+
+  // Get the size from the header
+  size_t size = GET_SIZE(HDRP(ptr));
+
+  // mark the block as free
+  PUT(HDRP(ptr), PACK(size, 0));
+  PUT(FTRP(ptr), PACK(size, 0));
+
+  // Try to coalesce the block with neighbors
+  void *try_coalesce = coalesce(ptr);
+
+  // Attempt to unmap the chunk if it became newly empty
+  unmap_chunk(try_coalesce);
+}
+
+// /*
+//  * Heap Consistency check funcion
+//  * This function checks for the following conditions:
+//  *  1. All blocks in the free list are marked as free in the header
+//  *  2. No contiguous free blocks that escaped coalescing
+//  *  3. All Free blocks are in the explicit free list
+//  *  4. All free list pointers are valid
+//  *  5. No allocated blocks overlap
+//  *  6. All pointers in heap block point to valid memory locations
+//  */
+// void check_heap()
+// {
+
+//   void *bp = heap_start;
+//   void *prev = NULL;
+
+//   // Check if the heap is initialized
+//   if (heap_start == NULL)
+//   {
+//     printf("Heap is not initialized.\n");
+//     return;
+//   }
+
+//   // Iterate through the heap to check for consistency
+//   size_t size = GET_SIZE(HDRP(bp));
+//   while (size > 0)
+//   {
+
+//     // Gets the allocated bit
+//     size_t alloc = GET_ALLOC(HDRP(bp));
+
+//     // Conditon 1: Check if all blocks in the free list are marked as free
+//     if (free_list_contains(bp) && alloc)
+//     {
+//       printf("Free block in explicit free list is marked as allocated.\n");
+//     }
+
+//     // Condition 2: Check for contiguous free blocks that escaped coalescing
+//     if (!alloc && prev != NULL && GET_ALLOC(HDRP(prev)))
+//     {
+//       printf("Contiguous free blocks detected that escaped coalescing.\n");
+//     }
+
+//     // Condition 5: Block overlap check
+//     if (!alloc && (char *)prev + GET_SIZE(HDRP(prev)) > (char *)bp)
+//     {
+//       printf("Overlapping free blocks detected.\n");
+//     }
+
+//     // Condition 6: Check if the pointer is valid
+//     if (!alloc && GET(HDRP(bp)) != GET(FTRP(bp)))
+//     {
+//       printf("Header/Footer mismatch detected.\n");
+//     }
+
+//     if (!heap_contains(bp))
+//     {
+//       printf("Pointer %p is not in the heap.\n", bp);
+//     }
+
+//     prev = bp;          // Update the previous pointer
+//     bp = NEXT_BLKP(bp); // Move to the next block
+//   }
+
+//   bp = heap_start; // Reset to the start of the heap for 3 & 4 checks
+//   while (GET_SIZE(HDRP(bp)) > 0)
+//   {
+
+//     // Condition 3: Check if all free blocks are in the explicit free list
+//     if (!GET_ALLOC(HDRP(bp)) && !free_list_contains(bp))
+//     {
+//       printf("Free block %p not found in explicit free list.\n", bp);
+//     }
+
+//     // Condition 4: Check if all free list pointers are valid
+//     void *current_free = explicit_free_list;
+//     while (current_free != NULL)
+//     {
+//       if (!heap_contains(current_free))
+//       {
+//         printf("Free list pointer %p is not in the heap.\n", current_free);
+//       }
+//       // Check next free block pointer
+//       if (NEXT_FREE(current_free) != NULL && !heap_contains(NEXT_FREE(current_free)))
+//       {
+//         printf("Next free pointer %p is not in the heap.\n", NEXT_FREE(current_free));
+//       }
+//       // Check previous free block pointer
+//       if (PREV_FREE(current_free) != NULL && !heap_contains(PREV_FREE(current_free)))
+//       {
+//         printf("Previous free pointer %p is not in the heap.\n", PREV_FREE(current_free));
+//       }
+//       current_free = NEXT_FREE(current_free);
+//     }
+//     bp = NEXT_BLKP(bp); // Move to the next block
+//   }
+//   printf("Heap consistency check passed.\n");
+// }
+
+// /*
+//  * Helper Function to check if a pointer is in the heap
+//  * Returns 1 if the pointer is in the heap, 0 otherwise
+//  */
+// int heap_contains(void *p)
+// {
+
+//   heap_node *current = chunk_list;
+
+//   while (current != NULL)
+//   {
+//     void *chunk_start = (char *)current + sizeof(heap_node);
+//     void *chunk_end = (char *)chunk_start + current->size;
+
+//     if ((intptr_t)p >= (intptr_t)chunk_start && (intptr_t)p < (intptr_t)chunk_end)
+//     {
+//       return 1; // Pointer is within the bounds of the chunk
+//     }
+
+//     current = current->next; // Move to the next chunk
+//   }
+//   return 0; // Pointer not found in any chunk
+// }
+
+// /*
+//  * Helper Function to check if a pointer is in the explicit free list
+//  * Returns 1 if the pointer is in the free list, 0 otherwise
+//  */
+// int free_list_contains(void *p)
+// {
+//   if (p == NULL || explicit_free_list == NULL)
+//   {
+//     return 0; // NULL pointer or empty free list
+//   }
+
+//   // Iterate through the free list to check if the pointer is present
+//   void *current = explicit_free_list;
+//   while (current != NULL)
+//   {
+//     if (current == p)
+//     {
+//       return 1; // Pointer found in the free list
+//     }
+//     // Move to the next free block in the list
+//     current = NEXT_FREE(current);
+//   }
+//   return 0; // Pointer not found in the free list
+// }
