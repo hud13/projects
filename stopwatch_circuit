@@ -1,0 +1,244 @@
+/*
+ECE 3700 Lab#4 - Stopwatch design 
+
+The stopwatch counts from 0-9, and has the following inputs: Start/Resume, Stop/Pause, and Reset.
+
+This module is a stopwatch that contains the following three submodules: 
+clock_divider: Converts a 50MHz clock input to a 1Hz signal for the stopwatch module counting.
+stopwatch: Represents the counting as FSM, where start, stop, and reset are signals.
+bcd_to_7seg: Decodes the count from the stopwatch to be properly represented in a 7 segment display. 
+
+Hudson Dalby 
+11/10/2024
+*/
+
+module Lab4_stopwatch(
+    input clk_50MHz,      // 50 MHz input clock from the DE10-Lite board
+    input start,          // Start/Resume button
+    input stop,           // Stop/Pause button
+    input reset,          // Reset button
+    output [6:0] seg      // 7-segment display output
+);
+
+    // Internal signals
+    wire clk_1Hz;           // 1 Hz clock signal from clock divider
+    wire [3:0] count;       // 4-bit count value for the stopwatch
+
+    // Instantiate the clock divider
+    clock_divider divider (
+        .clk_50MHz(clk_50MHz),
+        .reset(reset),
+        .clk_1Hz(clk_1Hz)
+    );
+
+    // Instantiate the stopwatch counter with inputs as control
+    stopwatch counter (
+        .clk_50MHz(clk_50MHz),   // Fast clock for button detection
+        .clk_1Hz(clk_1Hz),       // Slow clock for counting at 1 Hz
+        .start(start),
+        .stop(stop),
+        .reset(reset),
+        .count(count)
+    );
+
+    // Instantiate the BCD to 7-segment display decoder
+    bcd_to_7seg decoder (
+        .bcd(count),
+        .seg(seg)
+    );
+
+endmodule
+
+// This module Converts a 50MHz clock input to a 1Hz signal. 
+
+module clock_divider(
+    input clk_50MHz,
+    input reset,
+    output reg clk_1Hz
+);
+    reg [25:0] counter = 0;
+
+	 // Triggers on every clock pulse, switches 1Hz clock when 25M pulses is reached (0.5 Sec)
+	 // Full 1Hz clock cycle occurs when 50M pulses is reached on 50MHz clock. 
+	 
+    always @(posedge clk_50MHz or posedge reset) begin
+        if (reset) begin
+            counter = 0;
+            clk_1Hz = 0;
+        end else if (counter == 24_999_999) begin  // 1 full clock cycle = 50 MHz
+            counter = 0;
+            clk_1Hz = ~clk_1Hz;
+        end else begin
+            counter = counter + 1;
+        end
+    end
+endmodule
+
+// This module does all of the counting logic and responds to inputs.
+
+module stopwatch(
+    input clk_50MHz,    // Fast clock for immediate button response
+    input clk_1Hz,      // Slow clock for counting
+    input start,
+    input stop,
+    input reset,
+    output reg [3:0] count = 0    // Initialize count to 0
+);
+
+	 //Sets the states as binary parameters. 
+	 parameter COUNTING = 1'b1;
+    parameter PAUSED = 1'b0;
+
+    reg state = PAUSED;        // Start in PAUSED state
+	 
+    reg start_last, stop_last; // Registers for edge detection of start and stop
+
+    // Button control logic running on 50 MHz clock for immediate response
+    always @(posedge clk_50MHz or posedge reset) begin
+        if (reset) begin
+            state = PAUSED;     // Set state to PAUSED on reset
+        end else begin
+            // Edge detection for start and stop
+            if (~start_last & start) begin // Detect rising edge of start
+                state = COUNTING;
+            end else if (~stop_last & stop) begin // Detect rising edge of stop
+                state = PAUSED;
+            end
+            
+            // Update last state for edge detection
+            start_last = start;
+            stop_last = stop;
+        end
+    end
+
+    // Counting logic on the 1 Hz clock, only when in COUNTING state
+    always @(negedge clk_1Hz or posedge reset) begin
+        if (reset) begin
+            count = 0;     // Reset count to 0
+        end else if (state == COUNTING) begin
+            count = (count == 9) ? 0 : count + 1;  // Wrap count at 9
+        end
+    end
+endmodule
+
+// This module converts a 4-digit binary coded decimal to 7-digit. 
+
+module bcd_to_7seg(
+    input [3:0] bcd,
+    output reg [6:0] seg
+);
+
+	// Decodes current bcd (count from stopwatch) to 7seg display
+    always @(*) begin
+        case (bcd)
+            4'd0: seg = 7'b1000000;
+            4'd1: seg = 7'b1111001;
+            4'd2: seg = 7'b0100100;
+            4'd3: seg = 7'b0110000;
+            4'd4: seg = 7'b0011001;
+            4'd5: seg = 7'b0010010;
+            4'd6: seg = 7'b0000010;
+            4'd7: seg = 7'b1111000;
+            4'd8: seg = 7'b0000000;
+            4'd9: seg = 7'b0010000;
+            default: seg = 7'b1111111;
+        endcase
+    end
+endmodule
+
+
+/*
+ECE 3700 Lab#4 - Stop-Watch design 
+
+This is a testbench module that ensures stopwatch works correctly for 6 important case scenarios:
+
+Test 1: Reset clears any previous states and/or input signals and pauses stopwatch.
+Test 2: Test the count for a few seconds to ensure correct timing. 
+Test 3: Stop the count for a few seconds to ensure stopwatch is correctly paused.
+Test 4: Reset from a stopped state to ensure count becomes 0 and remains paused. 
+Test 5: Count until after 9 seconds to ensure correct reset to 0
+Test 6; Reset from a counting state to ensure count resets and is stopped. 
+
+Hudson Dalby 
+11/10/2024
+*/
+
+`timescale 1ns/1ps
+
+module stopwatch_tb;
+    reg clk_50MHz;    // Simulated 50 MHz clock
+    reg clk_1Hz;      // Simulated 1 Hz clock
+    reg start;
+    reg stop;
+    reg reset;
+    wire [3:0] count;
+
+    // Instantiate the stopwatch module
+    stopwatch uut (
+        .clk_50MHz(clk_50MHz),
+        .clk_1Hz(clk_1Hz),
+        .start(start),
+        .stop(stop),
+        .reset(reset),
+        .count(count)
+    );
+
+    // Generate the 50 MHz clock
+    initial clk_50MHz = 0;
+    always #10 clk_50MHz = ~clk_50MHz;  // Toggle every 10ns (50MHz)
+
+    // Generate the 1 Hz clock
+    initial clk_1Hz = 0;
+    always #500000000 clk_1Hz = ~clk_1Hz;  // Toggle every 500ms (1Hz)
+
+    // Monitor key signals and display when they change
+    initial begin
+        $monitor("Time=%0t | start=%b stop=%b reset=%b | state=%b count=%d", 
+                 $time, start, stop, reset, uut.state, count);
+    end
+
+    // Test procedure
+    initial begin
+        // Initialize signals
+        start = 0;
+        stop = 0;
+        reset = 0;
+
+		  // Test case 1: Initial Reset
+		  #5 reset = 1;   // press reset
+        #20 reset = 0;	// release reset
+        #2000000000;		// wait 2 seconds to confirm stopwatch is paused. 
+		  
+		  //Test case 2: test count
+		  #5 start = 1;	// press start button
+        #20 start = 0;  // release start button
+        #4000000000;    // Wait 4 seconds to observe counting
+		  
+		  // Test case 3: Stop counting
+        #5 stop = 1;		 // press start button 
+        #20 stop = 0;    // release stop button
+        #3000000000;     // Wait 3 seconds to confirm counting stops
+
+		  
+        // Test case 4: Reset at stopped value 
+        #5 reset = 1;	// reset pushed
+        #20 reset = 0;  // reset released
+        #3000000000;		// wait 3 sec to confirm counting has stopped and count is 0
+
+        // Test case 5: Start counting
+        #5 start = 1;	// press start button
+        #20 start = 0;  // release start button
+        #4000000000;    // Wait for 12 seconds to observe counting reset after 9
+        #4000000000;    // (Split into 4 second intervals to prevent integer overflow in tb)
+		  #4000000000;     
+
+        // Test case 6: Reset during counting
+        #5 reset = 1;	// Press reset
+        #20 reset = 0;  // release reset
+        #3000000000;    // Wait 3 seconds and observe count remains 0
+
+        // End of test
+        $stop;
+    end
+endmodule
+
