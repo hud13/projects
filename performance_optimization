@@ -1,0 +1,780 @@
+
+/*******************************************
+ * Solutions for the CS:APP Performance Lab
+ ********************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "defs.h"
+
+*  Completed by Hudson Dalby 
+*  2/22/25
+
+/***************
+ * COMPLEX KERNEL
+ ***************/
+
+/******************************************************
+ * Your different versions of the complex kernel go here
+ ******************************************************/
+
+/*
+ * naive_complex - The naive baseline version of complex
+ */
+char naive_complex_descr[] = "naive_complex: Naive baseline implementation";
+void naive_complex(int dim, pixel *src, pixel *dest)
+{
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+    {
+
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].red = ((int)src[RIDX(i, j, dim)].red +
+                                                       (int)src[RIDX(i, j, dim)].green +
+                                                       (int)src[RIDX(i, j, dim)].blue) /
+                                                      3;
+
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].green = ((int)src[RIDX(i, j, dim)].red +
+                                                         (int)src[RIDX(i, j, dim)].green +
+                                                         (int)src[RIDX(i, j, dim)].blue) /
+                                                        3;
+
+      dest[RIDX(dim - j - 1, dim - i - 1, dim)].blue = ((int)src[RIDX(i, j, dim)].red +
+                                                        (int)src[RIDX(i, j, dim)].green +
+                                                        (int)src[RIDX(i, j, dim)].blue) /
+                                                       3;
+    }
+}
+
+inline void processPixel(int i, int j, int dim, const pixel *src, pixel *dest)
+{
+  int srcIndex = RIDX(i, j, dim);
+  int destIndex = RIDX(dim - j - 1, dim - i - 1, dim);
+
+  int colorVal = (src[srcIndex].red + src[srcIndex].green + src[srcIndex].blue) / 3;
+
+  pixel p = {colorVal, colorVal, colorVal};
+  dest[destIndex] = p;
+}
+
+/*
+Basic optimization to get rid of easily apparent redundancies
+ */
+char complex_basicOptimize_descr[] = "complex: test version with basic optimizations";
+void complex_basicOptimize(int dim, pixel *src, pixel *dest)
+{
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+    {
+      int srcIndex = RIDX(i, j, dim);
+      int destIndex = RIDX(dim - j - 1, dim - i - 1, dim);
+
+      int avg = (src[srcIndex].red + src[srcIndex].green + src[srcIndex].blue) / 3;
+
+      dest[destIndex].red = avg;
+      dest[destIndex].green = avg;
+      dest[destIndex].blue = avg;
+    }
+}
+
+/*
+Improved version of the basic optimized with unrolled loops.
+ */
+char complex_loopUnroll_descr[] = "complex: version with unrolled loops";
+void complex_loopUnroll(int dim, pixel *src, pixel *dest)
+{
+  int i, j;
+
+  int blocksize = 4;
+
+  for (i = 0; i < dim; i++)
+  {
+    int srcRow = i * dim;
+    int destCol = dim - i - 1;
+    for (j = 0; j <= dim - blocksize; j += blocksize)
+    {
+      int srcIndex0 = srcRow + j;
+      int srcIndex1 = srcRow + j + 1;
+      int srcIndex2 = srcRow + j + 2;
+      int srcIndex3 = srcRow + j + 3;
+
+      int destIndex0 = (dim - j - 1) * dim + destCol;
+      int destIndex1 = (dim - j - 2) * dim + destCol;
+      int destIndex2 = (dim - j - 3) * dim + destCol;
+      int destIndex3 = (dim - j - 4) * dim + destCol;
+
+      int avg0 = (src[srcIndex0].red + src[srcIndex0].green + src[srcIndex0].blue) / 3;
+      int avg1 = (src[srcIndex1].red + src[srcIndex1].green + src[srcIndex1].blue) / 3;
+      int avg2 = (src[srcIndex2].red + src[srcIndex2].green + src[srcIndex2].blue) / 3;
+      int avg3 = (src[srcIndex3].red + src[srcIndex3].green + src[srcIndex3].blue) / 3;
+
+      dest[destIndex0].red = avg0;
+      dest[destIndex0].green = avg0;
+      dest[destIndex0].blue = avg0;
+
+      dest[destIndex1].red = avg1;
+      dest[destIndex1].green = avg1;
+      dest[destIndex1].blue = avg1;
+
+      dest[destIndex2].red = avg2;
+      dest[destIndex2].green = avg2;
+      dest[destIndex2].blue = avg2;
+
+      dest[destIndex3].red = avg3;
+      dest[destIndex3].green = avg3;
+      dest[destIndex3].blue = avg3;
+    }
+  }
+}
+
+/*
+Tiling to improve cache locality
+Tiling found to be very effective, use in final.
+*/
+char complex_tiling_descr[] = "complex: tiling to improve cache locality";
+void complex_tiling(int dim, pixel *src, pixel *dest)
+{
+
+  int blockSize = 16;
+  int i, j, ii, jj;
+  for (i = 0; i < dim; i += blockSize)
+  {
+    for (j = 0; j < dim; j += blockSize)
+    {
+
+      for (ii = i; ii < i + blockSize; ii++)
+      {
+        for (jj = j; jj < j + blockSize; jj++)
+        {
+          int srcIndex = RIDX(ii, jj, dim);
+          int destIndex = RIDX(dim - jj - 1, dim - ii - 1, dim);
+          int avg = (src[srcIndex].red + src[srcIndex].green + src[srcIndex].blue) / 3;
+          dest[destIndex].red = avg;
+          dest[destIndex].green = avg;
+          dest[destIndex].blue = avg;
+        }
+      }
+    }
+  }
+}
+
+/*
+ * complex - Your current working version of complex
+ * Takes blocking concepts and further unrolls the inner loop
+ * Uses pointer arithmetic on two pixels at once rather than recalculating index.
+ */
+char complex_descr[] = "complex: Current working version";
+void complex(const int dim, pixel *src, pixel *dest)
+{
+  const int blockSize = 8;
+  int i, j, ii, jj;
+  for (i = 0; i < dim; i += blockSize)
+  {
+    for (j = 0; j < dim; j += blockSize)
+    {
+      // Process blockSize x blockSize in cache
+      for (ii = i; ii < i + blockSize; ii++)
+      {
+        for (jj = j; jj < j + blockSize; jj += 2)
+        {
+          int srcIndex0 = RIDX(ii, jj, dim);
+          int srcIndex1 = RIDX(ii, jj + 1, dim);
+          int destIndex0 = RIDX(dim - jj - 1, dim - ii - 1, dim);
+          int destIndex1 = RIDX(dim - jj - 2, dim - ii - 1, dim);
+
+          int avg0 = (src[srcIndex0].red + src[srcIndex0].green + src[srcIndex0].blue) / 3;
+          int avg1 = (src[srcIndex1].red + src[srcIndex1].green + src[srcIndex1].blue) / 3;
+
+          dest[destIndex0].red = avg0;
+          dest[destIndex0].green = avg0;
+          dest[destIndex0].blue = avg0;
+
+          dest[destIndex1].red = avg1;
+          dest[destIndex1].green = avg1;
+          dest[destIndex1].blue = avg1;
+        }
+      }
+    }
+  }
+}
+
+/*********************************************************************
+ * register_complex_functions - Register all of your different versions
+ *     of the complex kernel with the driver by calling the
+ *     add_complex_function() for each test function. When you run the
+ *     driver program, it will test and report the performance of each
+ *     registered test function.
+ *********************************************************************/
+
+void register_complex_functions()
+{
+  add_complex_function(&complex, complex_descr);
+  add_complex_function(&naive_complex, naive_complex_descr);
+  add_complex_function(&complex_basicOptimize, complex_basicOptimize_descr);
+  add_complex_function(&complex_loopUnroll, complex_loopUnroll_descr);
+  add_complex_function(&complex_tiling, complex_tiling_descr);
+}
+
+/***************
+ * MOTION KERNEL
+ **************/
+
+/***************************************************************
+ * Various helper functions for the motion kernel
+ * You may modify these or add new ones any way you like.
+ **************************************************************/
+
+/*
+ * weighted_combo - Returns new pixel value at (i,j)
+ */
+static pixel weighted_combo(int dim, int i, int j, pixel *src)
+{
+  int ii, jj;
+  pixel current_pixel;
+
+  int red, green, blue;
+  red = green = blue = 0;
+
+  int num_neighbors = 0;
+  for (ii = 0; ii < 3; ii++)
+    for (jj = 0; jj < 3; jj++)
+      if ((i + ii < dim) && (j + jj < dim))
+      {
+        num_neighbors++;
+        red += (int)src[RIDX(i + ii, j + jj, dim)].red;
+        green += (int)src[RIDX(i + ii, j + jj, dim)].green;
+        blue += (int)src[RIDX(i + ii, j + jj, dim)].blue;
+      }
+
+  current_pixel.red = (unsigned short)(red / num_neighbors);
+  current_pixel.green = (unsigned short)(green / num_neighbors);
+  current_pixel.blue = (unsigned short)(blue / num_neighbors);
+
+  return current_pixel;
+}
+
+/*
+ * optimized weighted combo, does the bounds checking at the start
+ * rather than every iteration of the 3 x 3 loop.
+ */
+static inline pixel optimized_weighted_combo(int dim, int i, int j, pixel *src)
+{
+  int ii, jj;
+
+  int red = 0, green = 0, blue = 0;
+
+  // Checks bounds once
+  int maxI = (i + 3 < dim) ? 3 : (dim - i);
+  int maxJ = (j + 3 < dim) ? 3 : (dim - j);
+  int num_neighbors = maxI * maxJ;
+
+  int start = i * dim + j;
+  for (ii = 0; ii < maxI; ii++)
+  {
+    int offset = ii * dim;
+    for (jj = 0; jj < maxJ; jj++)
+    {
+      pixel p = src[start + offset + jj];
+      red += p.red;
+      green += p.green;
+      blue += p.blue;
+    }
+  }
+
+  pixel current_pixel;
+  current_pixel.red = (unsigned short)(red / num_neighbors);
+  current_pixel.green = (unsigned short)(green / num_neighbors);
+  current_pixel.blue = (unsigned short)(blue / num_neighbors);
+
+  return current_pixel;
+}
+
+/*
+Weighted combo helper where the 3 x 3 neighbor block is unrolled if possible
+Changed to use pointer arithmetic to avoid computing address every time
+*/
+static inline __attribute__((always_inline)) pixel unrolled_weighted_combo(int dim, int i, int j, pixel *src)
+{
+  pixel current_pixel;
+  int red = 0, green = 0, blue = 0;
+  int num_neighbors;
+
+  if (i <= dim - 3 && j <= dim - 3)
+  {
+
+    pixel *p = src + (i * dim + j);
+
+    // unrolled neighbor pixels (middle)
+    red = p[0].red + p[1].red + p[2].red + (p + dim)[0].red + (p + dim)[1].red + (p + dim)[2].red + (p + 2 * dim)[0].red + (p + 2 * dim)[1].red + (p + 2 * dim)[2].red;
+
+    green = p[0].green + p[1].green + p[2].green + (p + dim)[0].green + (p + dim)[1].green + (p + dim)[2].green + (p + 2 * dim)[0].green + (p + 2 * dim)[1].green + (p + 2 * dim)[2].green;
+
+    blue = p[0].blue + p[1].blue + p[2].blue + (p + dim)[0].blue + (p + dim)[1].blue + (p + dim)[2].blue + (p + 2 * dim)[0].blue + (p + 2 * dim)[1].blue + (p + 2 * dim)[2].blue;
+    num_neighbors = 9;
+  }
+  else
+  {
+    // Edge cases for those who don't have all 9 neighbors
+    int maxI = (i + 3 <= dim) ? 3 : (dim - i);
+    int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+    num_neighbors = 0;
+    for (int ii = 0; ii < maxI; ii++)
+    {
+      for (int jj = 0; jj < maxJ; jj++)
+      {
+
+        pixel *p = src + ((i + ii) * dim + (j + jj));
+        red += p->red;
+        green += p->green;
+        blue += p->blue;
+        num_neighbors++;
+      }
+    }
+  }
+
+  current_pixel.red = (unsigned short)(red / num_neighbors);
+  current_pixel.green = (unsigned short)(green / num_neighbors);
+  current_pixel.blue = (unsigned short)(blue / num_neighbors);
+
+  return current_pixel;
+}
+
+inline void compute_red(const int dim, pixel *restrict src, pixel *restrict dst, int i, int j)
+{
+  pixel *p = src + i * dim + j;
+  pixel *p_row1 = p + dim;
+  pixel *p_row2 = p + 2 * dim;
+
+  int red0 = p[0].red, red1 = p[1].red, red2 = p[2].red;
+  int red_row1_0 = p_row1[0].red, red_row1_1 = p_row1[1].red, red_row1_2 = p_row1[2].red;
+  int red_row2_0 = p_row2[0].red, red_row2_1 = p_row2[1].red, red_row2_2 = p_row2[2].red;
+
+  int red = red0 + red1 + red2 + red_row1_0 + red_row1_1 + red_row1_2 + red_row2_0 + red_row2_1 + red_row2_2;
+
+  dst->red = (unsigned short)(red / 9);
+}
+
+inline void compute_green(const int dim, pixel *restrict src, pixel *restrict dst, int i, int j)
+{
+  pixel *p = src + i * dim + j;
+  pixel *p_row1 = p + dim;
+  pixel *p_row2 = p + 2 * dim;
+
+  int green0 = p[0].green, green1 = p[1].green, green2 = p[2].green;
+  int green_row1_0 = p_row1[0].green, green_row1_1 = p_row1[1].green, green_row1_2 = p_row1[2].green;
+  int green_row2_0 = p_row2[0].green, green_row2_1 = p_row2[1].green, green_row2_2 = p_row2[2].green;
+
+  int green = green0 + green1 + green2 + green_row1_0 + green_row1_1 + green_row1_2 + green_row2_0 + green_row2_1 + green_row2_2;
+
+  dst->green = (unsigned short)(green / 9);
+}
+
+inline void compute_blue(const int dim, pixel *restrict src, pixel *restrict dst, int i, int j)
+{
+  pixel *p = src + i * dim + j;
+  pixel *p_row1 = p + dim;
+  pixel *p_row2 = p + 2 * dim;
+
+  int blue0 = p[0].blue, blue1 = p[1].blue, blue2 = p[2].blue;
+  int blue_row1_0 = p_row1[0].blue, blue_row1_1 = p_row1[1].blue, blue_row1_2 = p_row1[2].blue;
+  int blue_row2_0 = p_row2[0].blue, blue_row2_1 = p_row2[1].blue, blue_row2_2 = p_row2[2].blue;
+
+  int blue = blue0 + blue1 + blue2 + blue_row1_0 + blue_row1_1 + blue_row1_2 + blue_row2_0 + blue_row2_1 + blue_row2_2;
+
+  dst->blue = (unsigned short)(blue / 9);
+}
+
+inline void compute_pixel(const int dim, pixel *src, pixel *dst, int i, int j)
+{
+  compute_red(dim, src, dst, i, j);
+  compute_green(dim, src, dst, i, j);
+  compute_blue(dim, src, dst, i, j);
+}
+
+/******************************************************
+ * Your different versions of the motion kernel go here
+ ******************************************************/
+
+/*
+ * naive_motion - The naive baseline version of motion
+ */
+char naive_motion_descr[] = "naive_motion: Naive baseline implementation";
+void naive_motion(int dim, pixel *src, pixel *dst)
+{
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+      dst[RIDX(i, j, dim)] = weighted_combo(dim, i, j, src);
+}
+
+/*
+Combined helper method and base method
+*/
+char motion_combined_descr[] = "Combined helper method and base";
+void motion_combined(int dim, pixel *src, pixel *dst)
+{
+  int i, j, ii, jj;
+
+  for (i = 0; i < dim; i++)
+  {
+    for (j = 0; j < dim; j++)
+    {
+      int red = 0, green = 0, blue = 0;
+      int num_neighbors = 0;
+
+      for (ii = 0; ii < 3; ii++)
+      {
+        for (jj = 0; jj < 3; jj++)
+        {
+          if ((i + ii < dim) && (j + jj < dim))
+          {
+            int idx = RIDX(i + ii, j + jj, dim);
+            num_neighbors++;
+            red += (int)src[idx].red;
+            green += (int)src[idx].green;
+            blue += (int)src[idx].blue;
+          }
+        }
+      }
+
+      int dst_idx = RIDX(i, j, dim);
+      dst[dst_idx].red = (unsigned short)(red / num_neighbors);
+      dst[dst_idx].green = (unsigned short)(green / num_neighbors);
+      dst[dst_idx].blue = (unsigned short)(blue / num_neighbors);
+    }
+  }
+}
+
+/*
+ * Optimized helper method version
+ */
+
+char helper_motion_descr[] = "motion with an optimized helper method";
+void helper_motion(int dim, pixel *src, pixel *dst)
+{
+
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+      dst[RIDX(i, j, dim)] = optimized_weighted_combo(dim, i, j, src);
+}
+
+/*
+Version with interior 3x3 neighbor pixel loops unrolled.
+*/
+char unroll_motion_descr[] = "motion with optimized, unrolled helper method";
+void unroll_motion(int dim, pixel *src, pixel *dst)
+{
+
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+    for (j = 0; j < dim; j++)
+      dst[RIDX(i, j, dim)] = unrolled_weighted_combo(dim, i, j, src);
+}
+
+/*
+Version that uses the unrolled weighted combo method,
+but calling method loops are blocked for cache locality.
+
+*/
+char block_unroll_motion_descr[] = "motion in blocks with unrolled helper method";
+void block_unroll_motion(int dim, pixel *src, pixel *dst)
+{
+
+  int blockSize = 8;
+  int i, j, ii, jj;
+
+  for (i = 0; i < dim; i += blockSize)
+  {
+    for (j = 0; j < dim; j += blockSize)
+    {
+      for (ii = i; ii < i + blockSize; ii++)
+      {
+        for (jj = j; jj < j + blockSize; jj++)
+        {
+          dst[RIDX(ii, jj, dim)] = unrolled_weighted_combo(dim, ii, jj, src);
+        }
+      }
+    }
+  }
+}
+
+/*
+Combines the helper method and main function to avoid overhead.
+*/
+char unroll_motion_combined_descr[] = "Combined motion with fastest helper method";
+void unroll_motion_combined(int dim, pixel *src, pixel *dst)
+{
+  for (int i = 0; i < dim; i++)
+  {
+    for (int j = 0; j < dim; j++)
+    {
+      int red = 0, green = 0, blue = 0, num_neighbors;
+      // If a full 3x3 block is available, use unrolled computation.
+      if (i <= dim - 3 && j <= dim - 3)
+      {
+        int start = i * dim + j;
+        red = src[start].red + src[start + 1].red + src[start + 2].red +
+              src[start + dim].red + src[start + dim + 1].red + src[start + dim + 2].red +
+              src[start + 2 * dim].red + src[start + 2 * dim + 1].red + src[start + 2 * dim + 2].red;
+        green = src[start].green + src[start + 1].green + src[start + 2].green +
+                src[start + dim].green + src[start + dim + 1].green + src[start + dim + 2].green +
+                src[start + 2 * dim].green + src[start + 2 * dim + 1].green + src[start + 2 * dim + 2].green;
+        blue = src[start].blue + src[start + 1].blue + src[start + 2].blue +
+               src[start + dim].blue + src[start + dim + 1].blue + src[start + dim + 2].blue +
+               src[start + 2 * dim].blue + src[start + 2 * dim + 1].blue + src[start + 2 * dim + 2].blue;
+        num_neighbors = 9;
+      }
+      else
+      {
+        // Edge case: determine the valid neighborhood dimensions.
+        int maxI = (i + 3 <= dim) ? 3 : (dim - i);
+        int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+        num_neighbors = 0;
+        for (int ii = 0; ii < maxI; ii++)
+        {
+          for (int jj = 0; jj < maxJ; jj++)
+          {
+            int index = (i + ii) * dim + (j + jj);
+            red += src[index].red;
+            green += src[index].green;
+            blue += src[index].blue;
+            num_neighbors++;
+          }
+        }
+      }
+      int idx = i * dim + j;
+      dst[idx].red = (unsigned short)(red / num_neighbors);
+      dst[idx].green = (unsigned short)(green / num_neighbors);
+      dst[idx].blue = (unsigned short)(blue / num_neighbors);
+    }
+  }
+}
+
+/*
+ Uses the unrolled helper method, with the calling loops unrolled further.
+*/
+char unrollMore_motion_descr[] = "motion with unrolled calling to the unrolled helper";
+void unrollMore_motion(int dim, pixel *src, pixel *dst)
+{
+
+  int i, j;
+
+  for (i = 0; i < dim; i++)
+  {
+    for (j = 0; j < dim; j += 4)
+    {
+      dst[RIDX(i, j, dim)] = unrolled_weighted_combo(dim, i, j, src);
+      dst[RIDX(i, j + 1, dim)] = unrolled_weighted_combo(dim, i, j + 1, src);
+      dst[RIDX(i, j + 2, dim)] = unrolled_weighted_combo(dim, i, j + 2, src);
+      dst[RIDX(i, j + 3, dim)] = unrolled_weighted_combo(dim, i, j + 3, src);
+    }
+  }
+}
+/*
+ * Uses the combined helper method and main function
+ * processes two pixels at a time.
+ */
+
+char split_motion_descr[] = "Uses the combined helper and main, but uses blocking.";
+void static inline split_motion(const int dim, pixel *src, pixel *dst)
+{
+  int i, j;
+
+  for (i = 0; i < dim - 2; i++)
+  {
+    pixel *dstRow = dst + i * dim;
+
+    for (j = 0; j < dim - 2; j += 2)
+    {
+      pixel *p1 = src + i * dim + j;
+      pixel *p2 = p1 + 1;
+
+      int red1 = p1[0].red + p1[1].red + p1[2].red +
+                 (p1 + dim)[0].red + (p1 + dim)[1].red + (p1 + dim)[2].red +
+                 (p1 + 2 * dim)[0].red + (p1 + 2 * dim)[1].red + (p1 + 2 * dim)[2].red;
+      int green1 = p1[0].green + p1[1].green + p1[2].green +
+                   (p1 + dim)[0].green + (p1 + dim)[1].green + (p1 + dim)[2].green +
+                   (p1 + 2 * dim)[0].green + (p1 + 2 * dim)[1].green + (p1 + 2 * dim)[2].green;
+      int blue1 = p1[0].blue + p1[1].blue + p1[2].blue +
+                  (p1 + dim)[0].blue + (p1 + dim)[1].blue + (p1 + dim)[2].blue +
+                  (p1 + 2 * dim)[0].blue + (p1 + 2 * dim)[1].blue + (p1 + 2 * dim)[2].blue;
+
+      int red2 = p2[0].red + p2[1].red + p2[2].red +
+                 (p2 + dim)[0].red + (p2 + dim)[1].red + (p2 + dim)[2].red +
+                 (p2 + 2 * dim)[0].red + (p2 + 2 * dim)[1].red + (p2 + 2 * dim)[2].red;
+      int green2 = p2[0].green + p2[1].green + p2[2].green +
+                   (p2 + dim)[0].green + (p2 + dim)[1].green + (p2 + dim)[2].green +
+                   (p2 + 2 * dim)[0].green + (p2 + 2 * dim)[1].green + (p2 + 2 * dim)[2].green;
+      int blue2 = p2[0].blue + p2[1].blue + p2[2].blue +
+                  (p2 + dim)[0].blue + (p2 + dim)[1].blue + (p2 + dim)[2].blue +
+                  (p2 + 2 * dim)[0].blue + (p2 + 2 * dim)[1].blue + (p2 + 2 * dim)[2].blue;
+
+      // Store results
+      dstRow[j].red = (unsigned short)(red1 / 9);
+      dstRow[j].green = (unsigned short)(green1 / 9);
+      dstRow[j].blue = (unsigned short)(blue1 / 9);
+
+      dstRow[j + 1].red = (unsigned short)(red2 / 9);
+      dstRow[j + 1].green = (unsigned short)(green2 / 9);
+      dstRow[j + 1].blue = (unsigned short)(blue2 / 9);
+    }
+
+    // edge cases
+
+    for (; j < dim; j++)
+    {
+      int red = 0, green = 0, blue = 0, num_neighbors = 0;
+      int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+      for (int ii = 0; ii < 3; ii++)
+      {
+        for (int jj = 0; jj < maxJ; jj++)
+        {
+          pixel *p = src + (i + ii) * dim + (j + jj);
+          num_neighbors++;
+          red += p->red;
+          green += p->green;
+          blue += p->blue;
+        }
+      }
+      dstRow[j].red = (unsigned short)(red / num_neighbors);
+      dstRow[j].green = (unsigned short)(green / num_neighbors);
+      dstRow[j].blue = (unsigned short)(blue / num_neighbors);
+    }
+  }
+
+  for (i = dim - 2; i < dim; i++)
+  {
+    pixel *dstRow = dst + i * dim;
+    for (j = 0; j < dim; j++)
+    {
+      int red = 0, green = 0, blue = 0, num_neighbors = 0;
+      int maxI = (i + 3 <= dim) ? 3 : (dim - i);
+      int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+      for (int ii = 0; ii < maxI; ii++)
+      {
+        for (int jj = 0; jj < maxJ; jj++)
+        {
+          pixel *p = src + (i + ii) * dim + (j + jj);
+          num_neighbors++;
+          red += p->red;
+          green += p->green;
+          blue += p->blue;
+        }
+      }
+      dstRow[j].red = (unsigned short)(red / num_neighbors);
+      dstRow[j].green = (unsigned short)(green / num_neighbors);
+      dstRow[j].blue = (unsigned short)(blue / num_neighbors);
+    }
+  }
+}
+
+void compute_edge_cases(const int dim, pixel *restrict src, pixel *restrict dst, int i, int j_start)
+{
+  for (int j = j_start; j < dim; j++)
+  {
+    int red = 0, green = 0, blue = 0;
+    int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+    int num_neighbors = maxJ * 3;
+
+    for (int ii = 0; ii < 3; ii++)
+    {
+      pixel *rowPtr = src + (i + ii) * dim + j;
+      for (int jj = 0; jj < maxJ; jj++)
+      {
+        red += rowPtr[jj].red;
+        green += rowPtr[jj].green;
+        blue += rowPtr[jj].blue;
+      }
+    }
+    dst[j].red = (unsigned short)(red / num_neighbors);
+    dst[j].green = (unsigned short)(green / num_neighbors);
+    dst[j].blue = (unsigned short)(blue / num_neighbors);
+  }
+}
+
+void compute_main_area(const int dim, pixel *restrict src, pixel *restrict dst)
+{
+  for (int i = 0; i < dim - 2; i++)
+  {
+    pixel *dstRow = dst + i * dim;
+
+    for (int j = 0; j < dim - 2; j += 2)
+    {
+      compute_pixel(dim, src, dstRow + j, i, j);
+      compute_pixel(dim, src, dstRow + j + 1, i, j + 1);
+    }
+
+    // Edge cases for the last two columns
+    compute_edge_cases(dim, src, dstRow, i, dim - 2);
+  }
+}
+
+void compute_bottom_rows(const int dim, pixel *restrict src, pixel *restrict dst)
+{
+  for (int i = dim - 2; i < dim; i++)
+  {
+    pixel *dstRow = dst + i * dim;
+    for (int j = 0; j < dim; j++)
+    {
+      int red = 0, green = 0, blue = 0;
+      int maxI = (i + 3 <= dim) ? 3 : (dim - i);
+      int maxJ = (j + 3 <= dim) ? 3 : (dim - j);
+      int num_neighbors = maxI * maxJ;
+
+      for (int ii = 0; ii < maxI; ii++)
+      {
+        pixel *rowPtr = src + (i + ii) * dim + j;
+        for (int jj = 0; jj < maxJ; jj++)
+        {
+          red += rowPtr[jj].red;
+          green += rowPtr[jj].green;
+          blue += rowPtr[jj].blue;
+        }
+      }
+      dstRow[j].red = (unsigned short)(red / num_neighbors);
+      dstRow[j].green = (unsigned short)(green / num_neighbors);
+      dstRow[j].blue = (unsigned short)(blue / num_neighbors);
+    }
+  }
+}
+
+/*
+ * Uses concept from split combined helper method, but makes optimizations
+ * Splits computation of each color into an inline method
+ * Made modular to minimize dependencies
+ */
+
+char motion_descr[] = "Fastest Motion - one to be submitted";
+void inline motion(const int dim, pixel *restrict src, pixel *restrict dst)
+{
+  compute_main_area(dim, src, dst);
+  compute_bottom_rows(dim, src, dst);
+}
+
+/*********************************************************************
+ * register_motion_functions - Register all of your different versions
+ *     of the motion kernel with the driver by calling the
+ *     add_motion_function() for each test function.  When you run the
+ *     driver program, it will test and report the performance of each
+ *     registered test function.
+ *********************************************************************/
+
+void register_motion_functions()
+{
+  add_motion_function(&motion, motion_descr);
+  add_motion_function(&motion_combined, motion_combined_descr);
+  add_motion_function(&helper_motion, helper_motion_descr);
+  add_motion_function(&unroll_motion, unroll_motion_descr);
+  add_motion_function(&block_unroll_motion, block_unroll_motion_descr);
+  add_motion_function(&unrollMore_motion, unrollMore_motion_descr);
+  add_motion_function(&unroll_motion_combined, unroll_motion_combined_descr);
+  add_motion_function(&split_motion, split_motion_descr);
+  add_motion_function(&naive_motion, naive_motion_descr);
+}
