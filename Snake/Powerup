@@ -1,0 +1,82 @@
+// <Summary>
+// This class represents a wall object to be used in
+// the snake game created for PS9. 
+// </Summary
+// Note: Field descriptions provided by Prof. Kopta in PS9 specifications.
+// <Author>
+// Ian Weller & Hudson Dalby
+// </Author>
+
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace GUI.Client.Models
+{
+    /// <summary>
+    /// Class Representation of a powerup object.
+    /// Contains fields related to the Model. 
+    /// </summary>
+    public class Powerup
+    {
+        /// <summary>
+        /// an int representing the powerup's unique ID.
+        /// </summary>
+        [JsonPropertyName("power")]
+        [JsonInclude]
+        public int power { get; private set; }
+
+        /// <summary>
+        /// a Point2D representing the location of the powerup.
+        /// </summary>
+        [JsonPropertyName("loc")]
+        [JsonInclude]
+        public Point2D loc { get; private set; }
+
+        /// <summary>
+        /// a bool indicating if the powerup "died" (was collected by a player) on this frame.
+        /// The server will send the dead powerups only once.
+        /// </summary>
+        [JsonPropertyName("died")]
+        [JsonInclude]
+        public bool died { get; private set; } = false;
+
+        /// <summary>
+        /// Default constructor for a powerup object.
+        /// Creates a new powerup with the powerup's unique ID and x,y coordinates
+        /// <paramref name="pow"/>
+        /// <paramref name="x"/>
+        /// <paramref name="y"/>
+        /// </summary>
+        public Powerup(int pow, int x, int y)
+        {
+            power = pow;
+            loc = new Point2D(x, y);
+        }
+
+        /// <summary>
+        /// Default constructor for the powerup. 
+        /// </summary>
+        public Powerup()
+        {
+            power = 0;
+            loc = new Point2D(0,0);
+            died = true;
+        }
+
+
+        /// <summary>
+        /// A constructor that creates a powerup object from a json data string. 
+        /// </summary>
+        /// <param name="Power"></param>
+        /// <param name="Loc"></param>
+        /// <param name="Died"></param>
+        [JsonConstructor]
+        public Powerup(int Power, Point2D Loc, bool Died)
+        {
+            power = Power;
+            loc = Loc;
+            died = Died;
+        }
+    }
+}
