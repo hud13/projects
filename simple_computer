@@ -1,0 +1,342 @@
+/*
+Lab5: Simple Computer Module 
+ECE-3700
+Hudson Dalby - 11/24/24
+ 
+This module is comprised of data path and FSM components, 
+which take input data through a series of 9 states, and displays the 
+value of the output register. 
+
+As specified per the instructions, the module contains key features: 
+i)  Global reset mapped to an external switch/button on board. 
+ii) 7-segment display to display value in ROut 
+iii) 4 Slde switches to read external data as input. 
+*/
+
+
+module Lab5_SimpleComputer(
+    input wire clk, reset,          // Clock and reset signals
+    input wire [3:0] SW,            // FPGA switches
+    output wire [6:0] seg_display   // 7-segment display output
+);
+
+    // FSM control signals
+    wire [3:0] state;
+    wire load_R1, load_R2, load_Rout;
+    wire [1:0] bus_sel, alu_op;
+
+    // Datapath outputs
+    wire [3:0] Rout;
+
+    // Instantiate FSM
+    fsm control_unit (
+        .clk(clk),
+        .reset(reset),
+        .state(state),
+        .load_R1(load_R1),
+        .load_R2(load_R2),
+        .load_Rout(load_Rout),
+        .bus_sel(bus_sel),
+        .alu_op(alu_op)
+    );
+
+    // Instantiate Datapath
+    datapath data_unit (
+        .clk(clk),
+        .reset(reset),
+        .SW(SW),
+        .bus_sel(bus_sel),
+        .op(alu_op),
+        .load_R1(load_R1),
+        .load_R2(load_R2),
+        .load_Rout(load_Rout),
+        .Rout_out(Rout)
+    );
+
+    // 7-Segment Display Module
+    seven_segment_display display (
+        .clk(clk),
+        .reset(reset),
+        .data_in(Rout),
+        .seg(seg_display)
+    );
+
+endmodule
+
+
+module fsm (
+    input wire clk, reset,
+    output reg [3:0] state,          // Current state
+    output reg load_R1, load_R2, load_Rout, // Register load enables
+    output reg [1:0] bus_sel,        // Bus selector
+    output reg [1:0] alu_op          // ALU operation selector
+);
+
+    // State encoding
+    localparam S0 = 4'b0000, S1 = 4'b0001, S2 = 4'b0010, S3 = 4'b0011,
+               S4 = 4'b0100, S5 = 4'b0101, S6 = 4'b0110, S7 = 4'b0111,
+               S8 = 4'b1000, S9 = 4'b1001;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            state <= S0;
+        end else begin
+            case (state)
+                S0: state <= S1;
+                S1: state <= S2;
+                S2: state <= S3;
+                S3: state <= S4;
+                S4: state <= S5;
+                S5: state <= S6;
+                S6: state <= S7;
+                S7: state <= S8;
+                S8: state <= S9;
+                S9: state <= S9;  // Stay in S9 until reset
+                default: state <= S0;
+            endcase
+        end
+    end
+
+    // Control logic for each state
+    always @(*) begin
+        // Default control signals
+        load_R1 = 0; load_R2 = 0; load_Rout = 0;
+        bus_sel = 2'b00; alu_op = 2'b00;
+
+        case (state)
+            S0: begin
+                // Reset registers and bus selection 
+            end
+            S1: begin
+                bus_sel = 2'b11;    // Select switches for bus
+                load_R1 = 1;        // Load bus data into R1
+            end
+            S2: begin
+                bus_sel = 2'b01;    // Immediate value (4'b0011)
+                load_R2 = 1;        // Load immediate into R2
+            end
+            S3: begin
+                alu_op = 2'b00;     // ADD operation
+                load_Rout = 1;      // Load ALU result into Rout
+            end
+            S4: begin
+                bus_sel = 2'b10;    // Select Rout for bus
+                load_R2 = 1;        // Load Rout data into R2
+            end
+            S5: begin
+                alu_op = 2'b01;     // OR operation
+                load_Rout = 1;      // Load ALU result into Rout
+            end
+            S6: begin
+                bus_sel = 2'b10;    // Select Rout for bus
+                load_R1 = 1;        // Load Rout data into R1
+            end
+            S7: begin
+                alu_op = 2'b11;     // NOT operation
+                load_Rout = 1;      // Load ALU result into Rout
+            end
+            S8: begin
+                bus_sel = 2'b10;    // Select Rout for bus
+                load_R1 = 1;        // Load Rout data into R1
+            end
+            S9: begin
+                alu_op = 2'b10;     // XOR operation
+                load_Rout = 1;      // Load ALU result into Rout
+                // Display Rout on 7-segment display 
+            end
+        endcase
+    end
+endmodule
+
+
+// Datapath module that combines the ALU, Register, and BUS modules 
+
+module datapath (
+    input wire clk, reset,
+    input wire [3:0] SW,         // Switch input
+    input wire [1:0] op,         // ALU operation selector
+    input wire [1:0] bus_sel,    // Bus selector
+    input wire load_R1, load_R2, load_Rout,  // Load enables
+    output wire [3:0] Rout_out   // Output from Rout
+);
+
+    // Internal wires
+    wire [3:0] bus, R1_out, R2_out, alu_out;
+
+    // Registers
+    register R1 (.clk(clk), .reset(reset), .load(load_R1), .D(bus), .Q(R1_out));
+    register R2 (.clk(clk), .reset(reset), .load(load_R2), .D(bus), .Q(R2_out));
+    register Rout (.clk(clk), .reset(reset), .load(load_Rout), .D(alu_out), .Q(Rout_out));
+
+    // ALU
+    alu ALU (.A(R1_out), .B(R2_out), .op(op), .Y(alu_out));
+
+    bus_mux bus_driver (.R1(R1_out), .R2(R2_out), .Rout(Rout_out), .SW(SW), .sel(bus_sel), .bus(bus));
+endmodule
+
+
+// ALU module to perform Logic operations
+module alu (
+    input wire [3:0] A, B,  // Inputs
+    input wire [1:0] op,    // Operation selector
+    output wire [3:0] Y     // Output
+);
+    assign Y = (op == 2'b00) ? A + B :  // ADD
+               (op == 2'b01) ? A | B :  // OR
+               (op == 2'b10) ? A ^ B :  // XOR
+                              ~A;       // NOT (only of A)
+endmodule
+
+
+// Register module to hold input data, output data, 
+// and external signals from clock, reset, load
+module register (
+    input wire clk, reset, load,  // Clock, reset, and load enable
+    input wire [3:0] D,           // Data input
+    output reg [3:0] Q            // Data output
+);
+    always @(posedge clk or posedge reset) begin
+        if (reset)
+            Q <= 4'b0;
+        else if (load)
+            Q <= D;
+    end
+endmodule
+
+
+// Multiplexor for data selection on BUS 
+module bus_mux (
+    input wire [3:0] R1, R2, Rout, SW,  // Inputs
+    input wire [1:0] sel,               // Selector
+    output wire [3:0] bus               // Bus output
+);
+    assign bus = (sel == 2'b00) ? R1 :				//Selects R1 
+                 (sel == 2'b01) ? 4'b0011 :		// Selects R2
+                 (sel == 2'b10) ? Rout :
+					  (sel == 2'b11) ? SW :
+					  4'b0000;
+endmodule
+
+module seven_segment_display (
+    input wire clk, reset,
+    input wire [3:0] data_in,
+    output reg [6:0] seg
+);
+
+    // Decode the 4-bit input into 7-segment signals
+    always @(*) begin
+        case (data_in)
+            4'b0000: seg = 7'b1000000; // 0
+            4'b0001: seg = 7'b1111001; // 1
+            4'b0010: seg = 7'b0100100; // 2
+            4'b0011: seg = 7'b0110000; // 3
+            4'b0100: seg = 7'b0011001; // 4
+            4'b0101: seg = 7'b0010010; // 5
+            4'b0110: seg = 7'b0000010; // 6
+            4'b0111: seg = 7'b1111000; // 7
+            4'b1000: seg = 7'b0000000; // 8
+            4'b1001: seg = 7'b0010000; // 9
+				4'b1010: seg = 7'b0001000; // A (10)
+				4'b1011: seg = 7'b0000011; // B (11)
+				4'b1100: seg = 7'b1000110; // C (12)
+				4'b1101: seg = 7'b0100001; // D (13)
+				4'b1110: seg = 7'b0000110; // E (14)
+				4'b1111: seg = 7'b0001110; // F (15)
+            default: seg = 7'b1111111; // Empty
+        endcase
+    end
+endmodule
+
+
+/*
+TESTBENCH: 
+Lab5: Simple Computer Module 
+ECE-3700
+Hudson Dalby - 11/24/24
+ 
+This module is focused on the data transfer between states of FSM,
+and ensuring values are correct throughout. 
+*/
+
+module tb_Lab5_SimpleComputer;
+
+    // Inputs to the system
+    reg clk;
+    reg reset;
+    reg [3:0] SW;
+
+    // Outputs from the datapath
+    wire [3:0] Rout_out;
+    wire [3:0] R1_out, R2_out;
+
+    // FSM outputs
+    wire [3:0] state;
+    wire load_R1, load_R2, load_Rout;
+    wire [1:0] bus_sel, alu_op;
+
+    // Instantiate FSM
+    fsm fsm_unit (
+        .clk(clk),
+        .reset(reset),
+        .state(state),
+        .load_R1(load_R1),
+        .load_R2(load_R2),
+        .load_Rout(load_Rout),
+        .bus_sel(bus_sel),
+        .alu_op(alu_op)
+    );
+
+    // Instantiate Datapath
+    datapath datapath_unit (
+        .clk(clk),
+        .reset(reset),
+        .SW(SW),
+        .bus_sel(bus_sel),
+        .op(alu_op),
+        .load_R1(load_R1),
+        .load_R2(load_R2),
+        .load_Rout(load_Rout),
+        .Rout_out(Rout_out)
+    );
+
+    // Clock generation
+    always #5 clk = ~clk;  // Generate a clock signal with a period of 10 units
+
+    // Test sequence
+    initial begin
+	 
+	 // Print results for each state transition
+        $monitor("Time: %0t | State: %b | R1: %b | R2: %b | Rout: %b",
+                 $time, state, datapath_unit.R1_out, datapath_unit.R2_out, Rout_out);
+					  
+					  
+        // Initialize inputs
+        clk = 0;
+        reset = 1;
+        SW = 4'b0000;
+
+        // Wait for a few clock cycles
+        #10;
+        reset = 0;  // Release reset
+
+        // Simulate switches loading into R1 in S1
+        SW = 4'b1010;  // Set switches to a test value (10 in decimal)
+		  
+        // Wait for FSM to move through states
+        #200;
+		  
+		  //Reset to try new value
+		  reset = 1;
+		  
+		  #200;
+
+		  reset = 0; 
+		  SW = 4'b1111;
+		  
+		  #200;
+
+        // End simulation
+        $stop;
+    end
+
+endmodule
