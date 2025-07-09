@@ -1,0 +1,365 @@
+/*
+  Author: Daniel Kopta
+  CS 4400, University of Utah
+
+  * Simulator handout
+  * A simple x86-like processor simulator.
+  * Read in a binary file that encodes instructions to execute.
+  * Simulate a processor by executing instructions one at a time and appropriately 
+  * updating register and memory contents.
+
+  * Some code and pseudo code has been provided as a starting point.
+  *
+  * Filled in by: Hudson Dalby
+  * Date: 1/24/25
+  * 
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include "instruction.h"
+
+// Forward declarations for helper functions
+unsigned int get_file_size(int file_descriptor);
+unsigned int* load_file(int file_descriptor, unsigned int size);
+instruction_t* decode_instructions(unsigned int* bytes, unsigned int num_instructions);
+unsigned int execute_instruction(unsigned int program_counter, instruction_t* instructions, 
+				 unsigned int* registers, unsigned char* memory);
+void print_instructions(instruction_t* instructions, unsigned int num_instructions);
+void error_exit(const char* message);
+
+// 17 registers
+#define NUM_REGS 17
+// 1024-byte stack
+#define STACK_SIZE 1024
+
+int main(int argc, char** argv)
+{
+  // Make sure we have enough arguments
+  if(argc < 2)
+    error_exit("must provide an argument specifying a binary file to execute");
+
+  // Open the binary file
+  int file_descriptor = open(argv[1], O_RDONLY);
+  if (file_descriptor == -1) 
+    error_exit("unable to open input file");
+
+  // Get the size of the file
+  unsigned int file_size = get_file_size(file_descriptor);
+  // Make sure the file size is a multiple of 4 bytes
+  // since machine code instructions are 4 bytes each
+  if(file_size % 4 != 0)
+    error_exit("invalid input file");
+
+  // Load the file into memory
+  // We use an unsigned int array to represent the raw bytes
+  // We could use any 4-byte integer type
+  unsigned int* instruction_bytes = load_file(file_descriptor, file_size);
+  close(file_descriptor);
+
+  unsigned int num_instructions = file_size / 4;
+
+  // Allocate and decode instructions
+  instruction_t* instructions = decode_instructions(instruction_bytes, num_instructions);
+
+  // Allocate and initialize registers (each register is set to 0 by default except for the stack pointer)
+  unsigned int* registers = (unsigned int*)malloc(sizeof(unsigned int) * NUM_REGS);
+
+  for (int i = 0; i < NUM_REGS; i++){
+    if (i == 8){
+      registers[i] = STACK_SIZE;
+    }
+    else
+      registers[i] = 0;
+  }
+
+  // Stack memory is byte-addressed
+  unsigned char* memory = (unsigned char*)malloc(sizeof(unsigned char) * STACK_SIZE);
+
+  // Initializes memory to 0
+  for (int i = 0; i < STACK_SIZE; i++){
+      memory[i] = 0;
+  }
+
+  // Run the simulation
+  unsigned int program_counter = 0;
+
+  // program_counter is a byte address, so we must multiply num_instructions by 4 to get the address past the last instruction
+  while(program_counter != num_instructions * 4)
+  {
+    program_counter = execute_instruction(program_counter, instructions, registers, memory);
+  }
+
+  // delete the allocated space to prevent memory leaks. 
+  free(instruction_bytes);
+  free(instructions);
+  free(registers);
+  free(memory);
+  
+  return 0;
+}
+
+/*
+ * Decodes the array of raw instruction bytes into an array of instruction_t
+ * Each raw instruction is encoded as a 4-byte unsigned int
+*/
+instruction_t* decode_instructions(unsigned int* bytes, unsigned int num_instructions)
+{
+  instruction_t* instructions = (instruction_t*)malloc(num_instructions * sizeof(instruction_t));
+  if (instructions == NULL){
+    error_exit("Instruction is null");
+  }
+
+  for(unsigned int i = 0; i < num_instructions; i++){
+    instructions[i].opcode = (bytes[i] >> 27) & 0x1F;   // Bits 31 - 27
+    instructions[i].first_register = (bytes[i] >> 22) & 0x1F;    // Bits 26 - 22
+    instructions[i].second_register = (bytes[i] >> 17) & 0x1F;   // Bits 21 - 17
+    instructions[i].immediate = bytes[i] & 0xFFFF;   // Bits 15 - 0
+  }
+  
+  return instructions;
+}
+
+/*
+ * Executes a single instruction and returns the next program counter
+*/
+unsigned int execute_instruction(unsigned int program_counter, instruction_t* instructions, unsigned int* registers, unsigned char* memory)
+{
+  // program_counter is a byte address, but instructions are 4 bytes each
+  // divide by 4 to get the index into the instructions array
+  instruction_t instr = instructions[program_counter / 4];
+
+  // Variable declaration for determining flags
+  int64_t flagCondition;
+
+  // signed integer declaration in operations involving offsets in memory. 
+  signed int address;
+  
+  switch(instr.opcode)
+  {
+  // Subtracts an immediate value from register and stores value back in register. 
+  case subl:
+    registers[instr.first_register] = registers[instr.first_register] - (int)instr.immediate;
+    break;
+  // Adds the contents of two registers, storing the result in the second register. 
+  case addl_reg_reg:
+    registers[instr.second_register] = registers[instr.first_register] + registers[instr.second_register];
+    break;
+  // Adds a register and immediate value, storing it back into the register. 
+  case addl_imm_reg: 
+    registers[instr.first_register] = registers[instr.first_register] + (int)instr.immediate;
+    break;
+  // Multiplies the contents of first and second register and stores them in second register. 
+  case imull: 
+    registers[instr.second_register] = (int)registers[instr.first_register] * (int)registers[instr.second_register];
+    break;
+  // A logical shift of the first register by 1. 
+  case shrl: 
+    registers[instr.first_register] = registers[instr.first_register] >> 1;
+    break;
+  // Move the contents of register one into register two. 
+  case movl_reg_reg:
+    registers[instr.second_register] = registers[instr.first_register];
+    break; 
+  // moves second register plus immediate offset contents of memory into the first register. 
+  case movl_deref_reg: 
+    address = registers[instr.first_register] + (int16_t)instr.immediate;
+    // Ensures the 4-byte value is in range.
+    if ( address >= 0 && address + 3 < STACK_SIZE){
+    memcpy(&registers[instr.second_register], &memory[address], 4);}
+    else 
+    exit(EXIT_FAILURE);
+    break;
+
+  // moves first register contents to the second register contents plus immediate offset in memory.   
+  case movl_reg_deref: 
+    // Ensures the 4-byte value is in range.
+    address = registers[instr.second_register] + (int16_t)instr.immediate;
+    if ( address >= 0 && address + 3 < STACK_SIZE){
+    memcpy(&memory[address],&registers[instr.first_register], 4);}
+    else 
+    exit(EXIT_FAILURE);
+    break;
+
+  // Moves immediate into register and sign extends. 
+  case movl_imm_reg: 
+    if (instr.immediate & 0x8000){
+      registers[instr.first_register] = instr.immediate | 0xFFFF0000;
+    }
+    else 
+      registers[instr.first_register] = instr.immediate & 0xFFFF;
+    break;
+  // Determines flag conditions for Reg2 - Reg1.
+  case cmpl: 
+    // Extend each register to 64 bits
+    flagCondition = (int64_t)(int)registers[instr.second_register] - (int64_t)(int)registers[instr.first_register];
+    
+    // Reset flags if anything previously in them
+     registers[0] &= ~(0x1 | 0x40 | 0x80 | 0x800);
+
+    // Determine CF(carry) flag
+    if ((uint32_t)registers[instr.second_register] < (uint32_t)registers[instr.first_register]){
+      registers[0] |= 0x1;
+    }
+
+    // Determine ZF(zero) flag
+    if (flagCondition == 0){
+      registers[0] |= 0x40;
+    }
+
+    // Determine SF(sign) flag
+    if (flagCondition & 0x80000000){
+      registers[0] |= 0x80;
+    }
+
+    // Determine OF(overflow) flag
+    if (flagCondition > 2147483647 || flagCondition < -2147483648){
+      registers[0] |= 0x800;
+    }
+  break;
+
+  // Jump if ZF
+  case je: 
+    if (registers[0] & 0x40){
+      return program_counter + 4 + (int)instr.immediate;
+    }
+  break;
+
+  // Jump if SF xor OF
+  case jl: 
+    if ((registers[0] & 0x80) ^ (registers[0] & 0x800)){
+      return program_counter + 4 + (int)instr.immediate;
+    }
+  break;
+
+  // Jump if (SF xor OF) or ZF
+  case jle: 
+    if (((registers[0] & 0x80) ^ (registers[0] & 0x800)) || (registers[0] & 0x40)){
+      return program_counter + 4 + (int)instr.immediate; 
+    }
+  break;
+
+  // Jump if not (SF xor OF)
+  case jge: 
+    if (!((registers[0] & 0x80) ^ (registers[0] & 0x800))){
+      return program_counter + 4 + (int)instr.immediate;
+    }
+  break;
+
+  // Jump if CF or ZF
+  case jbe: 
+    if ((registers[0] & 0x1) || (registers[0] & 0x40)){
+      return program_counter + 4 + (int)instr.immediate;
+    }
+  break;
+
+  // Unconditional jump
+  case jmp: 
+    return program_counter + 4 + (int)instr.immediate;
+  break;
+
+  // Calls a function by moving the stack pointer and jumping to target given by instr.immediate
+  case call: 
+  registers[8] -= 4;
+  address = program_counter + 4;
+  memcpy(&memory[registers[8]], &address, 4);
+  program_counter = program_counter + (int)instr.immediate;
+  return program_counter + 4;
+
+  // Returns to the memory indicated by stack pointer. Exits simulation if stack pointer is at default. 
+  case ret: 
+  if (registers[8] == 1024){
+    exit(0);
+  }
+  else{
+  memcpy(&program_counter, &memory[registers[8]], 4);
+  registers[8] += 4;
+  return program_counter;
+  }
+
+  // pushes register contents onto the memory stack. 
+  case pushl: 
+    registers[8] = registers[8] - 4; 
+    memcpy(&memory[registers[8]], &registers[instr.first_register], 4);
+  break;
+
+  // pops register contents from the top of memory stack. 
+  case popl: 
+    memcpy(&registers[instr.first_register], &memory[registers[8]], 4);
+    registers[8] = registers[8] + 4; 
+  break;
+
+  // prints the value of reg1. 
+  case printr:
+    printf("%d (0x%x)\n", registers[instr.first_register], registers[instr.first_register]);
+    break;
+
+  // takes user input for integer in reg1.
+  case readr:
+    scanf("%d", &(registers[instr.first_register]));
+    break;
+  }
+
+  // program_counter + 4 represents the subsequent instruction
+  return program_counter + 4;
+}
+
+/*
+ * Returns the file size in bytes of the file referred to by the given descriptor
+*/
+unsigned int get_file_size(int file_descriptor)
+{
+  struct stat file_stat;
+  fstat(file_descriptor, &file_stat);
+  return file_stat.st_size;
+}
+
+/*
+ * Loads the raw bytes of a file into an array of 4-byte units
+*/
+unsigned int* load_file(int file_descriptor, unsigned int size)
+{
+  unsigned int* raw_instruction_bytes = (unsigned int*)malloc(size);
+  if(raw_instruction_bytes == NULL)
+    error_exit("unable to allocate memory for instruction bytes (something went really wrong)");
+
+  int num_read = read(file_descriptor, raw_instruction_bytes, size);
+
+  if(num_read != size)
+    error_exit("unable to read file (something went really wrong)");
+
+  return raw_instruction_bytes;
+}
+
+/*
+ * Prints the opcode, register IDs, and immediate of every instruction, 
+ * assuming they have been decoded into the instructions array
+*/
+void print_instructions(instruction_t* instructions, unsigned int num_instructions)
+{
+  printf("instructions: \n");
+  unsigned int i;
+  for(i = 0; i < num_instructions; i++)
+  {
+    printf("op: %d, reg1: %d, reg2: %d, imm: %d\n", 
+	   instructions[i].opcode,
+	   instructions[i].first_register,
+	   instructions[i].second_register,
+	   instructions[i].immediate);
+  }
+  printf("--------------\n");
+}
+
+
+/*
+ * Prints an error and then exits the program with status 1
+*/
+void error_exit(const char* message)
+{
+  printf("Error: %s\n", message);
+  exit(1);
+}
