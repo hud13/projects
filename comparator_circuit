@@ -1,0 +1,206 @@
+/*
+Configurable Comparator Circuit for Lab 3
+
+Control Specifications:
+- When c = 1, the circuit treats both vectors as two's complement numbers
+- When c = 0, the circuit treats both vectors as signed integers. 
+
+Circuit produces three outputs: (F1, F2, F3). 
+- When A > B, (1, 0, 0) is output
+- When A = B, (0, 1, 0) is output
+- When A < B, (0, 0, 1) is output
+
+ECE 3700-001
+Hudson Dalby
+10/27/24
+*/
+
+module Lab3_Comparator (
+    input wire [3:0] A,      // 4-bit input vector A
+    input wire [3:0] B,      // 4-bit input vector B
+    input wire c,            // Control signal: 1 for two's complement, 0 for unsigned
+    output reg F1, F2, F3   // Three output bits
+);
+  
+  // Get the sign bits of each Input
+				wire sign_A = A[3];
+				wire sign_B = B[3];
+		  
+				// Gets the 3-bit magnitudes of A & B
+				wire [2:0] magnitude_A = A[2:0]; 
+				wire [2:0] magnitude_B = B[2:0]; 
+  
+		
+	 // always block is triggered when input signal changes occur
+    always @(*) begin
+	 
+			
+			// signed integers mode
+        if (c == 0) begin
+		  
+			
+				// Both numbers are positive
+				if (sign_A == 0 && sign_B == 0) begin
+				 F1 = (magnitude_A > magnitude_B);
+				 F2 = (magnitude_A == magnitude_B);
+				 F3 = (magnitude_A < magnitude_B);
+				end 
+				
+				
+				// Both numbers are negative 
+				else if (sign_A == 1 && sign_B == 1) begin
+				 F1 = (magnitude_A < magnitude_B);
+				 F2 = (magnitude_A == magnitude_B);
+				 F3 = (magnitude_A > magnitude_B);
+				end
+				
+				// A is positive, B is negative
+				else if (sign_A == 0 && sign_B == 1) begin
+				
+					if (magnitude_A == 0 && magnitude_B == 0) begin 
+						F1 = 0; F2= 1; F3 = 0;
+						end
+						
+					else begin F1 = 1; F2 = 0; F3 = 0; end
+					
+					
+				end
+				
+				// A is negative, B is positive
+				else begin
+				if (magnitude_A == 0 && magnitude_B == 0) begin 
+						F1 = 0; F2= 1; F3 = 0;
+						end
+						
+				else begin F1 = 0; F2 = 0; F3 = 1; end
+						
+				end
+				
+            
+				// Two's complement mode:
+        end else begin
+       
+		 
+				F1 = ($signed(A) > $signed(B));		// (1, 0, 0) Output
+				F2 = ($signed(A) == $signed(B));		// (0, 1, 0) Output
+				F3 = ($signed(A) < $signed(B));		// (0, 0, 1) Output
+				 
+				
+        end
+    end
+endmodule
+
+
+/*
+Testbench for Lab 3 Comparator
+
+ECE 3700-001
+Hudson Dalby
+10/27/24
+*/
+
+
+module Lab3_Comparator_tb;
+
+    // Testbench signals
+    reg [3:0] A;       // 4-bit input A
+    reg [3:0] B;       // 4-bit input B
+    reg c;             // Control signal
+    wire F1, F2, F3;   // Output signals
+
+    // Instantiate the Comparator module
+    Lab3_Comparator uut (
+        .A(A),
+        .B(B),
+        .c(c),
+        .F1(F1),
+        .F2(F2),
+        .F3(F3)
+    );
+
+    // Test sequence
+    initial begin
+        // Monitor outputs
+        $monitor("Time: %0dns | A: %b | B: %b | c: %b | F1: %b | F2: %b | F3: %b", $time, A, B, c, F1, F2, F3);
+
+        // --- Test cases for signed comparison ---
+        c = 0;
+
+        // Test Case 1: A > B
+        A = 4'b0111; // 7
+        B = 4'b0011; // 3
+        #10; // Wait for 10 time units
+        
+        // Test Case 2: A < B
+        A = 4'b0010; // 2
+        B = 4'b0100; // 4
+        #10; // Wait for 10 time units
+
+        // Test Case 3: A == B
+        A = 4'b0101; // 5
+        B = 4'b0101; // 5
+        #10; // Wait for 10 time units
+
+        // Test Case 4: A is negative, B is positive
+        A = 4'b1011; // -3
+        B = 4'b0001; // 1
+        #10; // Wait for 10 time units
+
+        // Test Case 5: A is positive, B is negative
+        A = 4'b0001; // 1
+        B = 4'b1011; // -3
+        #10; // Wait for 10 time units
+		  
+		  // Test Case 6: Both are negative, A > B
+        A = 4'b1010; // -2
+        B = 4'b1100; // -4
+        #10; // Wait for 10 time units
+		  
+		  // Test Case 7: Both are negative, B > A
+        A = 4'b1111; // -7
+        B = 4'b1100; // -4
+        #10; // Wait for 10 time units
+
+        // --- Test cases for two's complement comparison ---
+        c = 1;
+
+        // Test Case 8: A > B
+        A = 4'b0110; // 6
+        B = 4'b0010; // 2
+        #10; // Wait for 10 time units
+
+        // Test Case 9: A < B
+        A = 4'b0010; // 2
+        B = 4'b0110; // 6
+        #10; // Wait for 10 time units
+
+        // Test Case 10: A == B
+        A = 4'b0000; // 0
+        B = 4'b0000; // 0
+        #10; // Wait for 10 time units
+
+        // Test Case 11: A is negative, B is positive
+        A = 4'b1110; // -2
+        B = 4'b0011; // 3
+        #10; // Wait for 10 time units
+
+        // Test Case 12: A is positive, B is negative
+        A = 4'b0001; // 1
+        B = 4'b1100; // -4
+        #10; // Wait for 10 time units
+		  
+		  // Test Case 13: Both are negative, A > B
+        A = 4'b1110; // -2
+        B = 4'b1100; // -4
+        #10; // Wait for 10 time units
+		  
+		  // Test Case 14: Both are negative, B > A
+        A = 4'b1001; // -7
+        B = 4'b1100; // -4
+        #10; // Wait for 10 time units
+		  
+		  
+        // Finish simulation
+        $finish;
+    end
+endmodule
