@@ -1,0 +1,111 @@
+
+﻿// <copyright file="ChatServer.cs" company="UofU-CS3500">
+// Copyright (c) 2024 UofU-CS3500. All rights reserved.
+// </copyright>
+// <Author>
+// Ian Weller & Hudson Dalby
+// <Author>
+using CS3500.Networking;
+
+namespace CS3500.Chatting;
+
+/// <summary>
+///   A simple ChatServer that handles clients separately and replies with a static message.
+/// </summary>
+public partial class ChatServer
+{
+    /// <summary>
+    /// A list of NetworkConnections managed by the server to broadcast messages. 
+    /// </summary>
+    private static List<NetworkConnection> clients = new();
+
+
+    /// <summary>
+    ///   The main program.
+    /// </summary>
+    /// <param name="args"> ignored. </param>
+    /// <returns> A Task. Not really used. </returns>
+    private static void Main(string[] args)
+    {
+        Server.StartServer(HandleConnect, 11_000);
+        Console.Read(); // don't stop the program.
+    }
+
+
+    /// <summary>
+    ///   <pre>
+    ///     When a new connection is established, enter a loop that receives from and
+    ///     replies to a client.
+    ///   </pre>
+    /// </summary>
+    ///
+    private static void HandleConnect(NetworkConnection connection)
+    {
+        // Initializes string object. 
+        string name = "";
+
+        // handle all messages until disconnect.
+        try
+        {
+            name = connection.ReadLine();
+
+            // Gives user default name if empty or white space
+            if (String.IsNullOrWhiteSpace(name))
+                name = "anonymous user";
+
+            // Lock to prevent multiple threads from accessing client list simultaneously
+            lock (clients)
+            {
+                clients.Add(connection);
+            }
+
+            connection.Send("Your username is: " + name);
+
+            // Allows client to enter messages and broadcast to other connected clients. 
+            while (true)
+            {
+                var message = connection.ReadLine();
+
+                if (message == null)
+                    throw new Exception();
+
+                else HandleMessage(name + ": " + message);
+            }
+        }
+
+        // Removes client from list and cleans up if client disconnection occurs. 
+        catch (Exception e)
+        {
+            // Lock prevents simultaneous thread access to clients list. 
+            lock (clients)
+            {
+                clients.Remove(connection);
+            }
+
+            // Broadcast a message to other clients indicating the user has left the chat.
+            HandleMessage(name + " has left the chat");
+
+            // Cleanup for disconnected client assets.
+            connection.Disconnect();
+
+            Console.WriteLine(e);
+        }
+
+    }
+
+    /// <summary>
+    /// Handler to broadcast the message to all clients in the server. 
+    /// </summary>
+    /// <param name="message"></param>
+    private static void HandleMessage(string message)
+    {
+        // Prevents concurrent access to altering clients list
+        lock (clients)
+        {
+            foreach (NetworkConnection client in clients)
+            {
+                client.Send(message);
+            }
+        }
+    }
+}
