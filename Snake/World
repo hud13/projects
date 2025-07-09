@@ -1,0 +1,74 @@
+﻿// <Summary>
+// This class represents the world in the PS9 snake game. 
+// </Summary
+// <Author>
+// Ian Weller & Hudson Dalby
+// </Author>
+
+using System.Text.Json.Serialization;
+
+namespace GUI.Client.Models
+{
+    /// <summary>
+    /// This class contains all of the objects sent by the server 
+    /// to be drawn for the client. 
+    /// Contains snakes, powerups, and walls. 
+    /// </summary>
+    public class World
+    {
+        /// <summary>
+        /// The snakes (players) in the game
+        /// </summary>
+        public Dictionary<int, Snake> Snakes;
+
+        /// <summary>
+        /// The powerups in the game
+        /// </summary>
+        public Dictionary<int, Powerup> Powerups;
+
+        /// <summary>
+        /// The walls in the game
+        /// </summary>
+        public Dictionary<int, Wall> Walls;
+
+        /// <summary>
+        /// The size of one of the square sides
+        /// </summary>
+        public int Size
+        { get; private set; }
+
+        /// <summary>
+        /// Default constructor for the world used to deserialize JSON. 
+        /// </summary>
+        public World()
+        {
+            Snakes = new Dictionary<int, Snake>();
+            Powerups = new Dictionary<int, Powerup>();
+            Walls = new Dictionary<int, Wall>();
+        }
+
+        /// <summary>
+        /// Creates a new world with the specified size
+        /// </summary>
+        /// <param name="_size"></param>
+        public World(int _size)
+        {
+            Snakes = new Dictionary<int, Snake>();
+            Powerups = new Dictionary<int, Powerup>();
+            Walls = new Dictionary<int, Wall>();
+            Size = _size;
+        }
+
+        /// <summary>
+        /// Copy constructor for initalizing new world objects
+        /// </summary>
+        /// <param name="world"></param>
+        public World(World world)
+        {
+            Snakes = new(world.Snakes);
+            Powerups = new(world.Powerups);
+            Walls = new(world.Walls);
+            Size = world.Size;
+        }
+    }
+}
