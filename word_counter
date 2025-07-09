@@ -1,0 +1,81 @@
+/*
+ *  Code to be used on MIPS assembly simulation software
+ *  Outputs the word count of provided user input
+ *
+ *  Author: Hudson Dalby
+ *  Date: 2/15/24
+ */
+
+.data 
+newline: .asciiz "\n"
+prompt: .asciiz "Enter a string of size less than 80 characters:"
+out_text: .asciiz "Word count: "
+invalid_text: .asciiz "\nInput contains too many characters"
+
+buffer:	.space 81			# Allocates 80 bytes + 1 null for input in $a0
+
+.text					# Start of the word counter instructions
+.globl main
+
+main: 
+
+print_prompt:	li $v0, 4		# syscall 4 = write string
+		la $a0, prompt		# loads the prompt from data 
+		syscall			# output the initial prompt
+		
+print_new_line: li $v0, 4		# syscall 4 = print string
+		la $a0, newline		# loads the prompt from data 
+		syscall			# output the initial prompt
+				
+read_input:	li $v0, 8		# syscall 8 = read string
+		la $a0, buffer		# loads address of input buffer
+		li $a1, 81		# sets maximum number of characters to read to 80 + 1 null
+		syscall			# reads the input from the user
+		
+parse_input: 	
+		li $s0, 0		# sets word count to 0
+		li $s7, 0		# sets word count to 0
+		li $s1, 0		# use this as a boolean flag if previous character was a letter 
+					# 0 = false, 1 = true
+					# Condition makes sure sequential non letters don't add to word count
+				
+		
+loop:		lbu $s3, 0($a0) 	# Loads char from the current input pointer in s3
+		addi $s7, $s7, 1	# Increases the character count by 1
+		beqz $s3, output	# Checks for the null character, jumps to output if found
+		
+		blt $s3, 65, nonLetter	# If t1 ASCII is less than 65 (A), increase count
+		bgt $s3, 122, nonLetter	# If t1 ASCII is greater than 122 (z), go to increase count
+	
+		ble $s3, 90, letter	# Go to letter label since char is uppercase letter
+		bge $s3, 97, letter	# Go to letter label since char is lowercase letter
+	
+nonLetter: 	beq $s1, 0, increment	# Goes to increment if previous char was not letter
+		addi $s0, $s0, 1	# Increases word count if previous char was letter
+		li $s1, 0		# Sets boolean flag back to default (false)
+
+					
+increment:	addi $a0, $a0, 1 	# Increments the string pointer
+		j loop			# Jumps back to the loop 
+		
+output:		beq $s7, 81, invalid	# Goes to invalid print if too many characters
+		li $v0, 4		# Syscall 4 = print string
+		la $a0, out_text	# loads the output string from data
+		syscall			# Prints the word count text
+		
+		li $v0, 1		# Syscall 1 = print integer
+		la $a0, ($s0)		# Loads the space count into 
+		syscall			# prints out the number of words
+		j end			# jumps to end of the program
+			
+letter: 	la $s1, 1		# Sets boolean condition to true if a letter is encountered
+		j increment		# goes to increment pointer after boolean is changed
+			
+end: 		li $v0, 10		# syscall 10 = exit the program
+		syscall			# ends the program
+		
+# Print for invalid input
+invalid:	li $v0, 4		# Syscall 4 = print string
+		la $a0, invalid_text	# loads the error string from data
+		syscall			# Prints the invalid input text
+		j end			# jumps to end of program
