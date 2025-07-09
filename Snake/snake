@@ -1,0 +1,156 @@
+
+﻿// <Summary>
+// This class represents a snake object to be used in
+// the snake game created for PS9. 
+// </Summary
+// Note: Field descriptions provided by Prof. Kopta in PS9 specifications.
+// <Author>
+// Ian Weller & Hudson Dalby
+// </Author>
+
+using System.Text.Json.Serialization;
+
+namespace GUI.Client.Models
+{
+    /// <summary>
+    /// Class representation of a snake object. 
+    /// Contains fields relating to the Model. 
+    /// </summary>
+    public class Snake
+    {
+        /// <summary>
+        /// an int representing the snake's unique ID. 
+        /// </summary>
+        [JsonPropertyName("snake")]
+        [JsonInclude]
+        public int snake { get; private set; }
+
+        /// <summary>
+        /// a string representing the player's name.
+        /// </summary>
+        [JsonPropertyName("name")]
+        [JsonInclude]
+        public string name { get; private set; }
+
+        /// <summary>
+        ///  a List<Point2D> representing the entire body of the snake.
+        ///  Each point in this list represents one vertex of the snake's body,
+        ///  where two consecutive vertices make up one straight segment of the body. 
+        ///  The first point of the list gives the location of the snake's tail, 
+        ///  and the last gives the location of the snake's head.
+        /// </summary>
+        [JsonPropertyName("body")]
+        [JsonInclude]
+        public List<Point2D> body { get; private set; }
+
+        /// <summary>
+        /// an Point2D representing the snake's orientation.
+        /// </summary>
+        [JsonPropertyName("dir")]
+        [JsonInclude]
+        public Point2D dir { get; private set; }
+
+        /// <summary>
+        /// an int representing the player's score 
+        /// (the number of powerups it has eaten).
+        /// </summary>
+        [JsonPropertyName("score")]
+        [JsonInclude]
+        public int score { get; private set; }
+
+        /// <summary>
+        /// an int representing the player's max score 
+        /// (the highest number of powerups it has eaten).
+        /// </summary>
+        [JsonIgnore]
+        public int maxScore { get; set; }
+
+        /// <summary>
+        /// a DateTime representing the player's join time. 
+        /// (when the client first saw the player).
+        /// </summary>
+        [JsonIgnore]
+        public DateTime? Enter { get; set; }
+
+        /// <summary>
+        /// a DateTime representing the player's leave time. 
+        /// (when the client saw "dc = true" sent by server for this player or the player disconnects).
+        /// </summary>
+        [JsonIgnore]
+        public DateTime? Leave { get; set; }
+
+        /// <summary>
+        /// an int representing a way of associating this player to an entry in the Games table.
+        /// (foreign key).
+        /// </summary>
+        [JsonIgnore]
+        public int gameID { get; set; } = -1;
+
+        /// <summary>
+        /// a bool indicating if the snake died on this frame.
+        /// This will only be true on the exact frame in which the snake died.
+        /// </summary>
+        [JsonPropertyName("died")]
+        [JsonInclude]
+        public bool died { get; private set; }
+
+        /// <summary>
+        /// a bool indicating whether a snake is alive or dead. 
+        /// </summary>
+        [JsonPropertyName("alive")]
+        [JsonInclude]
+        public bool alive { get; set; }
+
+        /// <summary>
+        /// a bool indicating if the player controlling that snake disconnected on that frame
+        /// The server will send the snake with this flag set to true only once,
+        /// then it will discontinue sending that snake for the rest of the game.
+        /// </summary>
+        [JsonPropertyName("dc")]
+        [JsonInclude]
+        public bool dc { get; private set; }
+
+        /// <summary>
+        /// a bool indicating if the player joined on this frame. 
+        /// This will only be true for one frame
+        /// </summary>
+        [JsonPropertyName("join")]
+        [JsonInclude]
+        public bool join { get; private set; }
+
+        /// <summary>
+        /// Default constructor for the snake object
+        /// </summary>
+        public Snake()
+        {
+            body = new List<Point2D>();
+        }
+
+        /// <summary>
+        /// Creates a snake object from a deserialized json string 
+        /// </summary>
+        /// <param name="Snake"></param>
+        /// <param name="Name"></param>
+        /// <param name="Body"></param>
+        /// <param name="Dir"></param>
+        /// <param name="Score"></param>
+        /// <param name="Died"></param>
+        /// <param name="Alive"></param>
+        /// <param name="DC"></param>
+        /// <param name="Join"></param>
+        [JsonConstructor]
+        public Snake(int Snake, string Name, List<Point2D> Body, Point2D Dir, int Score, bool Died, bool Alive, bool DC, bool Join)
+        {
+            snake = Snake;
+            name = Name;
+            body = Body;
+            dir = Dir;
+            score = Score;
+            died = Died;
+            alive = Alive;
+            dc = DC;
+            join = Join;
+        }
+
+    }
+}
