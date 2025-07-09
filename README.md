@@ -1,5 +1,6 @@
 This is a repository containing notable projects I have worked on throughout my undergraduate career at the University of Utah.
 Here is a list of notable CS courses I have taken with concepts learned in each:
+_____________________________________________________________________________________________________________________________________________________________
 
 CS 4400 - Computer Systems
 - Cross-layer communications between multiple levels of abstraction such as operating systems, assembly code translations, and caching performance.
@@ -12,8 +13,7 @@ Related Project Files:  (C, Red Hat Enterprise Linux)
 - performance_optimization
 - shell_simulation
 - memory_allocator
-
-
+_____________________________________________________________________________________________________________________________________________________________
 
 CS 3810 - Computer Organization
 - RISC and CISC instruction set architectures and CPU organizations.
@@ -25,8 +25,7 @@ Related Project Files:  (MIPS Assembly)
 - fibonacci_sequence_asm
 - data_compression_asm
 - word_counter_asm
-
-
+_____________________________________________________________________________________________________________________________________________________________
 
 CS 3700 - Fundamentals of Digital System Design
 - Design, minimization, and implementation of digital circuits and systems.
@@ -41,7 +40,7 @@ Related Project Files:  (Verilog, Intel Quartus Prime)
 - stopwatch_circuit
 - simple_computer
 
-
+_____________________________________________________________________________________________________________________________________________________________
 
 CS 3505 - Software Practice II
 - Focus on traditional software development using Model-View-Control architecture.
@@ -54,7 +53,7 @@ Related Project Files: (C++, Qt)
 - Sprite Editor
 - Simon Game
 
-
+_____________________________________________________________________________________________________________________________________________________________
 
 CS 3500 - Software Practice
 - Design, implementation, maintenance, and testing large software systems.
@@ -64,4 +63,4 @@ CS 3500 - Software Practice
 Related Project Files: (C++, ASP.NET Razor, SQL)
 - Snake
 - Spreadsheet
-
+_____________________________________________________________________________________________________________________________________________________________
