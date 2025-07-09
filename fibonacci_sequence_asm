@@ -1,0 +1,65 @@
+/*
+ *  Code to be used on MIPS assembly simulation software
+ *  Outputs the nth element of the Fibonacci sequence based on user input
+ *
+ *  Author: Hudson Dalby
+ *  Date: 2/15/24
+ */
+
+.data 
+prompt: .asciiz "Enter an integer greater than zero:\n"
+output1: .asciiz "Element "
+output2: .asciiz " of the Fibonacci sequence is: "
+
+.text					# Start of the word counter instructions
+.globl main
+
+main: 
+
+print_prompt:	li $v0, 4		# syscall 4 = write string
+		la $a0, prompt		# loads the prompt from data 
+		syscall			# output the initial prompt
+				
+read_input:	li $v0, 5		# syscall 5 = read integer
+		syscall			# reads the input from the user
+		move $s0, $v0		# Stores the contents of the read as a variable N
+		move $s2, $v0		# Creates another copy of the number read for later use
+		
+		beq $s0, 0, output	# If input is 0 goes directly to output
+		li $s3, 1		# Sets a starting point for the N-1
+		beq $s0, 1, output	# If input is 1 goes directly to output
+		
+		li $s1, 2		# sets a counter for the Fibonacci sequence to repeat, starts at 2
+		li $s3, 1		# Sets a starting point for the N-1
+		li $s4, 1		# Sets a starting point for the N-2
+		
+		
+loop: 		bge $s1, $s2, output	# If the fibonacci sequence has looped enough
+
+		la $t1, ($s3)		# Sets first part of sequence as temporary variable
+		la $t2, ($s4)		# Sets second part of sequence as temporary variable	
+		
+		add $s3, $t1, $t2	# combine to make new N
+		
+		la $s4, ($t1)		# sets s4 to the previous N
+		addi $s1, $s1, 1	# Increments the counter
+		j loop			# Jumps back to repeat the loop
+		
+output:		li $v0, 4		# Syscall 4 = print string
+		la $a0, output1		# Sets argument address to output1 string
+		syscall			# Prints out first part of output
+		
+		li $v0, 1		# Syscall 1 = print integer
+		la $a0, ($s0)		# loads input variable to print to output
+		syscall			# Prints out the variable originally input by user
+		
+		li $v0, 4		# Syscall 4 = print string 
+		la $a0, output2		# sets argument address to output2 string
+		syscall			# Prints out second part of output
+
+		li $v0, 1		# Syscall 1 = print integer
+		la $a0, ($s3)		# loads final value of N to print
+		syscall			# Prints out final value of N 
+		
+end: 		li $v0, 10		# Syscall 10 = finish program
+		syscall
