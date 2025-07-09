@@ -1,0 +1,173 @@
+// This is a structural Verilog file for lab1 ECE 3700
+// Author: Hudson Dalby
+// Date: 9/13/24
+
+// Module with inputs and outputs
+module Lab1Verilog(a1,b1,i1,i0,a0,b0,f1Verilog,f0Verilog);
+input a1;
+input b1;
+input i1;
+input i0;
+input a0;
+input b0;
+output f1Verilog;
+output f0Verilog;
+
+// Intermediate variables 
+wire Na1;
+wire Nb1;
+wire Ni1;
+wire Na0;
+wire Nb0;
+wire Ni0;
+wire o1;
+wire o2;
+wire o3;
+wire o4;
+wire o5;
+wire o6;
+wire o7;
+wire o8;
+
+// Not inputs
+not (Na1, a1);
+not (Nb1, b1);
+not (Ni1, i1);
+not (Na0, a0);
+not (Nb0, b0);
+not (Ni0, i0);
+
+// Outputs of each and gate to be put in the for gate
+
+// And gates leading into f1 or gate:
+and (o1, i1, Na1);
+and (o2, Ni1, a1, b1);
+and (o3, Ni1, i0, na1, b1);
+and (o4, Ni1, i0, a1, Nb1);
+
+// And gates leading into f0 or gate: 
+and (o5, i1, Na0);
+and (o6, Ni1, a0, b0);
+and (o7, Ni1, i0, na0, b0);
+and (o8, Ni1, i0, a0, Nb0);
+
+// Or gates combining each of the and gates
+or (f1Verilog, o1, o2, o3, o4);
+or (f0Verilog, o5, o6, o7, o8);
+
+endmodule
+
+
+// Functional Verilog that accomplishes the same
+
+module Lab1FunctionalVerilog(input a0,input a1,input b0,input b1,input i0,input i1, output f0Func, output f1Func);
+
+
+assign f1Func = {i1&~a1 | ~i1&a1&b1 | ~i1&i0&~a1&b1 | ~i1&i0&a1&~b1};
+assign f0Func = {i1&~a0 | ~i1&a0&b0 | ~i1&i0&~a0&b0 | ~i1&i0&a0&~b0};
+
+endmodule
+
+
+// Testbench code to cycle through inputs and observe results
+
+
+module Lab1_tb;
+
+	// Inputs
+	reg a0;
+	reg a1;
+	reg b0;
+	reg b1;
+	reg i0;
+	reg i1;
+
+
+	// Outputs
+	wire f0Block;
+	wire f1Block;
+	wire f0Verilog;
+	wire f1Verilog;
+	wire f0Func;
+	wire f1Func;
+	
+	//for simulation
+	integer i, j, k, l, m, n;
+
+	// Instantiate the Unit Under Test (UUT) for Block Diagram
+	Lab1Block uut1 (
+		.a0(a0), 
+		.a1(a1), 
+		.b0(b0),
+		.b1(b1),
+		.i0(i0),
+		.i1(i1),
+		.f0Block(f0Block),
+		.f1Block(f1Block)
+	);
+
+	// Instantiate the Unit Under Test (UUT) for Verilog code
+	Lab1Verilog uut2 (
+		.a0(a0), 
+		.a1(a1), 
+		.b0(b0),
+		.b1(b1),
+		.i0(i0),
+		.i1(i1),
+		.f0Verilog(f0Verilog),
+		.f1Verilog(f1Verilog)
+	);
+	
+	// Instantiate the Unit Under Test (UUT) for Functional Verilog code 
+	Lab1FunctionalVerilog uut3 (
+		.a0(a0), 
+		.a1(a1), 
+		.b0(b0),
+		.b1(b1),
+		.i0(i0),
+		.i1(i1),
+		.f0Func(f0Func),
+		.f1Func(f1Func)
+	);
+
+	initial begin
+		// Initialize Inputs
+		a0 = 0;
+		a1 = 0;
+		b0 = 0;
+		b1 = 0;
+		i0 = 0;
+		i1 = 0;//
+
+		// Wait 1 ns for global reset to finish
+		#1;
+        for(i = 0; i<2; i = i+1)
+		  begin
+			for(j = 0; j < 2; j = j+1)
+			begin
+				for(k =0; k< 2; k = k + 1)
+				begin
+					for(l = 0; l<2; l = l+1)
+					begin
+						for(m = 0; m < 2; m = m+1)
+						begin
+							for(n =0; n < 2; n = n + 1)
+							begin
+				
+				a0 = i; a1 = j; b0 = k; b1 = l; i0 = m; i1 = n;
+
+				#1;
+				$display("a0 :%b, a1: %b, b0 :%b, b1 :%b i0 :%b, i1: %b,f0Block:%b, f1Block:%b, f0Verilog:%b, f1Verilog:%b, f0Func %b, f1Func %b",a0,a1,b0,b1,i0,i1,f0Block, f1Block, f0Verilog,f1Verilog, f0Func, f1Func);
+				
+							end
+						end
+					end
+				end
+			end
+		  end
+		// Add stimulus here
+
+	end
+      
+endmodule
+
