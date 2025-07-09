@@ -1,0 +1,52 @@
+﻿// <Summary>
+// This class represents a point in 2D space as coordinates (X, Y)
+// </Summary
+// <Author>
+// Ian Weller & Hudson Dalby
+// </Author>
+
+using System.Text.Json.Serialization;
+
+namespace GUI.Client.Models
+{
+    /// <summary>
+    /// Represents a point in space
+    /// </summary>
+    public class Point2D
+    {
+        /// <summary>
+        /// The X-coordinate of the point.
+        /// </summary>
+        [JsonPropertyName("X")]
+        [JsonInclude]
+        public int X { get; private set; }
+
+        /// <summary>
+        /// The Y-coordinate of the point. 
+        /// </summary>
+        [JsonPropertyName("Y")]
+        [JsonInclude]
+        public int Y {  get; private set; } 
+
+        /// <summary>
+        /// Default constructor for point object
+        /// </summary>
+        public Point2D()
+        {
+            X = 0;
+            Y = 0;
+        }
+
+        /// <summary>
+        /// Creates a point based off of given x and y coordinates. 
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        [JsonConstructor]
+        public Point2D(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
+}
