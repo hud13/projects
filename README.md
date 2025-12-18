@@ -42,6 +42,17 @@ Related Project Files (Verilog, Intel Quartus Prime):
 
 _____________________________________________________________________________________________________________________________________________________________
 
+CS 3710 - Computer Design Lab 
+- Use Verilog to implement a "simpler" model of the CR16A Microprocessor.
+- Work as a team of 4 to implement in Intel Quartus using modular Verilog and debugging techniques. 
+- Design contains: Instruction Set Design, Memory Organization, ALU design, micro-control, and input-output design
+- Design an application that will run on the implemented computer. 
+
+Related Project Files (Verilog, Intel Quartus Prime, Assembly-level):
+- FPGA Computer Example Files
+  
+______________________________________________________________________________________________________________________________________________________________
+
 CS 3505 - Software Practice II
 - Focus on traditional software development using Model-View-Control architecture.
 - Process of agile and waterfall software development in a team setting. 
@@ -63,4 +74,5 @@ CS 3500 - Software Practice
 Related Project Files (C++, ASP.NET Razor, SQL):
 - Snake
 - Spreadsheet
-_____________________________________________________________________________________________________________________________________________________________
+
+- 
